@@ -1,0 +1,122 @@
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+html,body{
+  background:var(--bg);
+  color:var(--ink-1);
+  font-family:'Noto Sans Thai',system-ui,sans-serif;
+  font-size:14px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+  font-feature-settings:'kern' 1, 'liga' 1;
+  transition:background-color var(--t-med), color var(--t-med);
+}
+body{
+  min-height:100dvh;
+  background-image:
+    radial-gradient(ellipse 80vw 50vh at 0% 0%, var(--orb-1), transparent 60%),
+    radial-gradient(ellipse 60vw 50vh at 100% 100%, var(--orb-2), transparent 60%);
+  background-attachment:fixed;
+  position:relative;
+  overflow-x:hidden;
+}
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:1;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  opacity:var(--grain-opacity);
+  mix-blend-mode:var(--grain-blend);
+  transition:opacity var(--t-med);
+}
+
+button{font:inherit;color:inherit;background:transparent;border:none;cursor:pointer}
+
+/* Card primitive */
+.card{
+  background:linear-gradient(180deg, var(--surface) 0%, var(--bg-2) 100%);
+  border:1px solid var(--line);
+  border-radius:18px;
+  position:relative;overflow:hidden;
+  box-shadow:var(--shadow-card);
+}
+
+/* Panel primitive */
+.panel{
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:18px;overflow:hidden;
+  box-shadow:var(--shadow-card);
+  display:flex;flex-direction:column;min-height:0;
+}
+.panel-head{
+  padding:18px 22px 14px;
+  display:flex;align-items:baseline;justify-content:space-between;gap:14px;
+  border-bottom:1px solid var(--line-2);
+}
+.panel-title{
+  font-family:'Noto Serif Thai',serif;
+  font-weight:700;font-size:17.5px;letter-spacing:-.005em;color:var(--ink-1);
+}
+.panel-title em{
+  font-family:'Fraunces',serif;font-style:italic;font-weight:500;
+  font-size:.78em;color:var(--gold-2);margin-left:6px;letter-spacing:0;
+}
+.panel-meta{
+  font-family:'JetBrains Mono',monospace;font-size:10px;
+  text-transform:uppercase;letter-spacing:.18em;color:var(--ink-3);
+}
+.panel-meta .live{color:var(--line-green);font-weight:600}
+.panel-meta .live::before{
+  content:"●";margin-right:4px;color:var(--line-green);
+  font-size:10px;animation:beat 1.6s infinite;
+}
+.panel-body{padding:18px 22px 22px;flex:1;min-height:0}
+.panel-body.tight{padding:14px 22px 22px}
+
+@keyframes beat{
+  0%,100%{box-shadow:0 0 0 0 var(--line-green-glow), 0 0 12px var(--line-green-glow)}
+  50%{box-shadow:0 0 0 8px transparent}
+}
+
+/* Empty state primitive */
+.empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:60px 24px;color:var(--ink-3);text-align:center;
+  font-family:'Noto Sans Thai',sans-serif;
+}
+.empty .illu{
+  font-family:'Fraunces',serif;font-style:italic;font-size:36px;color:var(--muted-2);
+  margin-bottom:14px;letter-spacing:-.02em;
+}
+.empty .ti{font-size:14px;color:var(--ink-2);margin-bottom:6px;font-weight:500}
+.empty .lo{font-size:12.5px;color:var(--ink-3)}
+
+/* Page frame */
+.frame{
+  max-width:1440px;margin:0 auto;padding:28px 28px 64px;
+  position:relative;z-index:2;
+}
+@media (max-width:680px){.frame{padding:18px 14px 80px}}
+
+/* Numeric defaults */
+.tnum{font-variant-numeric:tabular-nums}
+
+/* Mobile overrides */
+@media (max-width:640px){
+  html,body{font-size:15px}
+  .frame{padding:max(14px, env(safe-area-inset-top)) 14px max(64px, env(safe-area-inset-bottom)) 14px}
+  .panel{border-radius:14px}
+  .panel-head{padding:14px 16px 12px}
+  .panel-title{font-size:15.5px}
+  .panel-body{padding:14px 16px 18px}
+  .panel-body.tight{padding:12px 16px 18px}
+  button,.f-chip,.chip,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+  }
+}

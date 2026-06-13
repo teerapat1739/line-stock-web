@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>สถาปัตยกรรม (Supabase) — LINE Stock Bot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0f172a;
+    --muted:#5f6b7a;
+    --line:#e5e7eb;
+    --green:#06c755;
+    --green-dark:#04a847;
+    --sb:#3ecf8e;            /* Supabase green */
+    --sb-dark:#249e6c;
+    --sb-soft:#ecfdf5;
+    --pg:#336791;            /* Postgres blue */
+    --pg-soft:#dbeafe;
+    --blue:#0ea5e9;
+    --pink:#ec4899;
+    --amber:#f59e0b;
+    --purple:#7c3aed;
+    --slate:#475569;
+    --soft:#f6f7fb;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;font-family:'Noto Sans Thai',system-ui,sans-serif;color:var(--ink);background:#eef1f5}
+  .page{max-width:1200px;margin:24px auto;padding:0 16px}
+  header{background:#fff;border-radius:16px;padding:24px 28px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  h1{margin:0 0 6px;font-size:24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .sb-badge{display:inline-flex;align-items:center;gap:6px;background:var(--sb-soft);color:var(--sb-dark);padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid #a7f3d0}
+  .sb-badge::before{content:"";width:10px;height:10px;background:var(--sb);border-radius:2px;display:inline-block;transform:rotate(45deg)}
+  header p{margin:0;color:var(--muted);font-size:15px;line-height:1.6}
+  .nav{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+  .nav a{font-size:13px;color:var(--green-dark);background:#f0fdf4;border:1px solid #bbf7d0;padding:5px 10px;border-radius:999px;text-decoration:none;font-weight:600}
+
+  /* Diagram canvas */
+  .diagram{background:#fff;border-radius:16px;padding:22px;margin-top:16px;box-shadow:0 1px 2px rgba(0,0,0,.04);overflow-x:auto}
+  .canvas{display:grid;gap:14px;min-width:780px}
+
+  .layer{display:grid;gap:10px}
+  .layer-title{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--slate);letter-spacing:.08em;text-transform:uppercase;padding-left:4px}
+  .layer-title .lt-num{width:22px;height:22px;border-radius:6px;background:var(--ink);color:#fff;font-size:11px;display:grid;place-items:center}
+  .layer .body{display:grid;gap:10px}
+
+  .row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .row.r3{grid-template-columns:repeat(3,1fr)}
+  .row.r2{grid-template-columns:repeat(2,1fr)}
+  .row.r1{grid-template-columns:1fr}
+  @media (max-width:780px){
+    .row,.row.r3,.row.r2{grid-template-columns:repeat(2,1fr)}
+  }
+
+  .box{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;position:relative;min-height:84px}
+  .box .ic{width:30px;height:30px;border-radius:8px;background:var(--soft);display:grid;place-items:center;font-size:16px;margin-bottom:8px}
+  .box h3{margin:0 0 2px;font-size:14.5px}
+  .box .en{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:6px}
+  .box p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5}
+
+  /* Color variants */
+  .box.user   {border-color:#bae6fd;background:linear-gradient(180deg,#f0f9ff 0%,#fff 60%)}
+  .box.user   .ic{background:#bae6fd}
+  .box.line   {border-color:#bbf7d0;background:linear-gradient(180deg,#f0fdf4 0%,#fff 60%)}
+  .box.line   .ic{background:#bbf7d0}
+  .box.sb     {border-color:#a7f3d0;background:linear-gradient(180deg,#ecfdf5 0%,#fff 60%)}
+  .box.sb     .ic{background:#a7f3d0}
+  .box.dash   {border-color:#ddd6fe;background:linear-gradient(180deg,#f5f3ff 0%,#fff 60%)}
+  .box.dash   .ic{background:#ddd6fe}
+  .box.opt    {border-color:#e5e7eb;background:repeating-linear-gradient(45deg,#fff 0 8px,#fafafa 8px 16px)}
+  .box.opt::after{content:"เพิ่มทีหลังได้";position:absolute;top:-9px;right:10px;background:#fff;color:var(--muted);font-size:10.5px;padding:1px 8px;border:1px solid var(--line);border-radius:999px}
+
+  /* Arrows between layers */
+  .arrows{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center;color:var(--slate);font-size:12px;padding:0 12px}
+  .arrow{display:flex;align-items:center;gap:8px}
+  .arrow .a{font-size:18px;color:var(--green-dark)}
+  .arrow .lbl{background:#f0fdf4;border:1px solid #bbf7d0;color:var(--green-dark);padding:3px 10px;border-radius:999px;font-weight:600;font-size:11.5px}
+  .arrow.down .a{transform:rotate(0deg)}
+  .arrow.up   .a{transform:rotate(180deg);color:var(--pink)}
+  .arrow.up   .lbl{background:#fdf2f8;border-color:#fbcfe8;color:#9d174d}
+
+  /* Layer cards */
+  .layer-card{background:#fafbff;border:1px dashed #cbd5e1;border-radius:14px;padding:14px;position:relative}
+  .layer-card.user   {background:linear-gradient(180deg,#eff6ff,#fafbff)}
+  .layer-card.line   {background:linear-gradient(180deg,#ecfdf5,#fafbff)}
+  .layer-card.sb     {background:linear-gradient(180deg,#ecfdf5,#fafbff);border-color:var(--sb);border-style:solid;border-width:2px}
+  .layer-card.sb::before{
+    content:"⚡ SUPABASE";
+    position:absolute;top:-10px;left:14px;background:var(--sb);color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;padding:2px 10px;border-radius:6px;font-family:'JetBrains Mono',monospace
+  }
+  .layer-card.dash   {background:linear-gradient(180deg,#f5f3ff,#fafbff)}
+
+  /* Avatar row */
+  .users{display:flex;justify-content:center;gap:10px;align-items:flex-end;padding:6px 0 0}
+  .phone{display:flex;flex-direction:column;align-items:center;font-size:12px;color:var(--muted)}
+  .phone .scr{width:54px;height:78px;border-radius:10px;background:#0f172a;color:#fff;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px;font-size:11px;border:3px solid #1e293b;position:relative}
+  .phone .scr::before{content:"";position:absolute;top:5px;width:18px;height:3px;background:#334155;border-radius:3px}
+  .phone .av{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;font-size:11px;margin-bottom:14px}
+  .phone .nm{margin-top:4px;font-weight:600;color:var(--ink)}
+  .group-pill{align-self:center;background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 14px;font-size:12px;color:var(--slate);font-weight:600;margin:10px auto 0;display:block;width:fit-content}
+
+  /* Numbered flow chip */
+  .step-num{position:absolute;top:-9px;left:10px;background:var(--green);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;font-family:'JetBrains Mono',monospace}
+
+  /* Database schema mini-ER */
+  .schema{background:#fff;border-radius:16px;padding:22px;margin-top:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .schema h2{margin:0 0 4px;font-size:18px;display:flex;align-items:center;gap:8px}
+  .schema h2 .pg-badge{background:var(--pg-soft);color:var(--pg);padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace}
+  .schema p.muted{font-size:13.5px}
+  .er{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+  @media (max-width:780px){.er{grid-template-columns:1fr}}
+  .table{background:#f8fafc;border:1.5px solid var(--line);border-radius:12px;overflow:hidden;font-family:'JetBrains Mono',monospace;font-size:12.5px}
+  .table .tname{background:var(--pg);color:#fff;padding:8px 12px;font-weight:700;display:flex;align-items:center;gap:6px;font-size:13px}
+  .table .tname .key{margin-left:auto;background:rgba(255,255,255,.18);padding:1px 6px;border-radius:4px;font-size:10.5px}
+  .table .col{padding:6px 12px;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;justify-content:space-between}
+  .table .col:last-child{border-bottom:0}
+  .table .col .n{color:var(--ink);font-weight:600}
+  .table .col .t{color:var(--muted)}
+  .table .col.pk .n::before{content:"🔑 ";font-size:11px}
+  .table .col.fk .n::after {content:" ↗";color:var(--pg);font-weight:700}
+
+  .legend{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{font-style:normal}
+
+  /* Notes panels */
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:16px}
+  @media (max-width:780px){.grid{grid-template-columns:1fr}}
+  .panel{background:#fff;border-radius:16px;padding:20px 22px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .panel h2{margin:0 0 10px;font-size:17px}
+  .panel ul{padding-left:18px;color:var(--muted);font-size:14px;line-height:1.7}
+  .panel li b{color:var(--ink)}
+  .tag{display:inline-block;background:#f1f5f9;color:#334155;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;margin-right:4px}
+  .tag.g{background:#dcfce7;color:#166534}
+  .tag.b{background:#dbeafe;color:#1e40af}
+  .tag.a{background:#fef3c7;color:#92400e}
+  .tag.p{background:#ede9fe;color:#5b21b6}
+  .tag.sb{background:#ecfdf5;color:var(--sb-dark);border:1px solid #a7f3d0}
+  code{background:#f1f5f9;padding:1px 6px;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace}
+
+  pre.sql{background:#0b1220;color:#e2e8f0;padding:14px 16px;border-radius:12px;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.7;overflow-x:auto;margin:0}
+  pre.sql .k{color:#f472b6}
+  pre.sql .t{color:#7dd3fc}
+  pre.sql .s{color:#fde68a}
+  pre.sql .c{color:#64748b}
+  pre.sql .v{color:#86efac}
+
+  /* Sequence diagram */
+  .seq{margin-top:16px;background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .seq h2{margin:0 0 8px;font-size:17px}
+  .seq-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:14px;position:relative}
+  .seq-col{text-align:center;font-size:12.5px;font-weight:700;color:var(--slate);padding-bottom:8px;border-bottom:2px solid var(--line)}
+  .seq-step{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,1fr);position:relative;padding:14px 0;border-bottom:1px dashed var(--line)}
+  .seq-step .lbl{position:absolute;background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--ink);font-weight:600;top:50%;transform:translateY(-50%)}
+  .seq-step .line{height:3px;background:var(--green);position:absolute;top:50%;transform:translateY(-50%)}
+  .seq-step .line.rev{background:var(--pink)}
+  .seq-step .arr{position:absolute;top:50%;transform:translate(-50%,-50%);font-size:18px;color:var(--green-dark)}
+  .seq-step .arr.rev{color:var(--pink)}
+  .seq-step.note{padding:8px 0;background:#fefce8;border-bottom:1px solid #fde68a}
+  .seq-step.note span{grid-column:1/-1;text-align:center;font-size:12px;color:#7c2d12}
+
+  .footer{color:var(--muted);font-size:12.5px;margin:20px 0;text-align:center}
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>สถาปัตยกรรมระบบ <span class="sb-badge">Hosted on Supabase</span></h1>
+    <p>ทุกอย่างอยู่บน Supabase ก้อนเดียว — <b>Edge Function</b> รับ webhook จาก LINE, <b>Postgres</b> เก็บข้อมูล + state, <b>Realtime</b> ส่ง update เข้า dashboard ค่าใช้จ่ายเริ่มต้น <b>$0/เดือน</b> (free tier)</p>
+    <div class="nav">
+      <a href="chat.html">← กลับไปดูตัวอย่างแชท</a>
+      <a href="parser.html">วิธีที่ parser.ts ทำงาน →</a>
+    </div>
+  </header>
+
+  <!-- ============== Main diagram ============== -->
+  <div class="diagram">
+    <div class="canvas">
+
+      <!-- Layer 1: Users -->
+      <div class="layer">
+        <div class="layer-title"><span class="lt-num">1</span>ผู้ใช้งาน • Staff in LINE Group</div>
+        <div class="layer-card user">
+          <div class="users">
+            <div class="phone"><div class="scr"><div class="av" style="background:#0ea5e9">เก</div></div><div class="nm">เก</div></div>
+            <div class="phone"><div class="scr"><div class="av" style="background:#ec4899">รส</div></div><div class="nm">รส</div></div>
+            <div class="phone"><div class="scr"><div class="av" style="background:#f59e0b">อิส</div></div><div class="nm">อิส</div></div>
+            <div class="phone"><div class="scr"><div class="av" style="background:#10b981">มะ</div></div><div class="nm">มะ</div></div>
+            <div class="phone"><div class="scr"><div class="av" style="background:var(--green)">ST</div></div><div class="nm">บอท</div></div>
+          </div>
+          <div class="group-pill">📱 LINE Group: "บันทึกสต็อค"</div>
+        </div>
+      </div>
+
+      <div class="arrows">
+        <div class="arrow down"><span class="a">⬇️</span><span class="lbl">ข้อความ + ปุ่ม</span></div>
+        <div class="arrow up"><span class="a">⬇️</span><span class="lbl">บอทตอบ + Quick Reply</span></div>
+      </div>
+
+      <!-- Layer 2: LINE Platform -->
+      <div class="layer">
+        <div class="layer-title"><span class="lt-num">2</span>LINE Platform (Cloud ของ LINE)</div>
+        <div class="layer-card line">
+          <div class="row r3">
+            <div class="box line">
+              <div class="ic">🔔</div>
+              <h3>Webhook Events</h3>
+              <div class="en">POST → Edge Function</div>
+              <p>LINE ยิงทุกข้อความในกลุ่มไปที่ URL ของ Edge Function พร้อม signature</p>
+            </div>
+            <div class="box line">
+              <div class="ic">💬</div>
+              <h3>Reply / Push API</h3>
+              <div class="en">api.line.me/v2/bot</div>
+              <p>ส่งข้อความ + ปุ่มกลับเข้ากลุ่ม (Quick Reply, Flex Message)</p>
+            </div>
+            <div class="box line">
+              <div class="ic">🎛</div>
+              <h3>Rich Menu</h3>
+              <div class="en">เมนูใต้แชท</div>
+              <p>ปุ่มถาวร: เบิก / เติม / ดูสต็อค ตั้งครั้งเดียว</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrows">
+        <div class="arrow down"><span class="a">⬇️</span><span class="lbl">HTTPS POST (signed)</span></div>
+        <div class="arrow up"><span class="a">⬇️</span><span class="lbl">fetch() Reply API</span></div>
+      </div>
+
+      <!-- Layer 3 + 4 (merged): Supabase -->
+      <div class="layer">
+        <div class="layer-title"><span class="lt-num">3</span>Supabase (Backend + Database + Realtime)</div>
+        <div class="layer-card sb">
+
+          <!-- Edge Function row -->
+          <div class="row">
+            <div class="box sb">
+              <div class="step-num">①</div>
+              <div class="ic">🛡</div>
+              <h3>Verify Signature</h3>
+              <div class="en">webhook/index.ts</div>
+              <p>เช็ค <code>x-line-signature</code> ด้วย Channel Secret ป้องกัน webhook ปลอม</p>
+            </div>
+            <div class="box sb">
+              <div class="step-num">②</div>
+              <div class="ic">🧭</div>
+              <h3>Router + Parser</h3>
+              <div class="en">parser.ts (Deno)</div>
+              <p>ตีความ <code>เบิกพริก 300</code> → action+item+qty<br>จัดการ chitchat, typo, ผิด, ดูสต็อค</p>
+            </div>
+            <div class="box sb">
+              <div class="step-num">③</div>
+              <div class="ic">🧠</div>
+              <h3>Session Loader</h3>
+              <div class="en">sessions table</div>
+              <p>ดึง state ของผู้ใช้คนนี้จาก <code>sessions</code> (per userId, TTL 10 นาที)</p>
+            </div>
+            <div class="box sb">
+              <div class="step-num">④</div>
+              <div class="ic">⚙️</div>
+              <h3>Stock Engine</h3>
+              <div class="en">engine.ts (rpc)</div>
+              <p>เรียก Postgres function <code>apply_entry()</code> — atomic + version check ภายใน transaction</p>
+            </div>
+          </div>
+
+          <div class="arrows" style="padding:0">
+            <div class="arrow down"><span class="a">⬇️</span><span class="lbl">SQL (Service Role / RPC)</span></div>
+            <div class="arrow up"><span class="a">⬇️</span><span class="lbl">rows + computed balance</span></div>
+          </div>
+
+          <!-- Postgres + Realtime row -->
+          <div class="row">
+            <div class="box sb">
+              <div class="ic">🐘</div>
+              <h3>Postgres</h3>
+              <div class="en">supabase.com/db</div>
+              <p>ตาราง <code>locations</code>, <code>items</code>, <code>entries</code>, <code>users</code>, <code>sessions</code>  (ดู schema ด้านล่าง)</p>
+            </div>
+            <div class="box sb">
+              <div class="ic">📡</div>
+              <h3>Realtime</h3>
+              <div class="en">postgres_changes</div>
+              <p>ทุกครั้งที่ <code>entries</code> เปลี่ยน → Dashboard ที่ subscribe อยู่ได้รับ update ทันที</p>
+            </div>
+            <div class="box sb">
+              <div class="ic">🔐</div>
+              <h3>RLS + Service Key</h3>
+              <div class="en">row-level security</div>
+              <p>Edge Function ใช้ <b>service role</b> เขียนได้ทุกอย่าง<br>Dashboard ใช้ <b>anon</b> + RLS อ่านได้ตามสิทธิ์</p>
+            </div>
+            <div class="box sb">
+              <div class="ic">🗑</div>
+              <h3>pg_cron</h3>
+              <div class="en">cleanup sessions</div>
+              <p>ลบ <code>sessions</code> ที่ <code>expires_at &lt; now()</code> ทุกๆ 5 นาที</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrows">
+        <div class="arrow down"><span class="a">⬇️</span><span class="lbl">supabase-js subscribe</span></div>
+        <div class="arrow up"><span class="a">⬇️</span><span class="lbl">change events</span></div>
+      </div>
+
+      <!-- Layer 4: Dashboard -->
+      <div class="layer">
+        <div class="layer-title"><span class="lt-num">4</span>Dashboard สำหรับเจ้าของร้าน (เลือกทำได้)</div>
+        <div class="layer-card dash">
+          <div class="row r3">
+            <div class="box dash">
+              <div class="ic">📊</div>
+              <h3>Web Dashboard</h3>
+              <div class="en">Next.js / static HTML</div>
+              <p>เห็นยอดคงเหลือ, สรุปรายวัน, ของใกล้หมด รีไทม์ผ่าน supabase-js</p>
+            </div>
+            <div class="box dash opt">
+              <div class="ic">📥</div>
+              <h3>Export</h3>
+              <div class="en">CSV / Sheets sync</div>
+              <p>ดาวน์โหลด CSV หรือ sync เข้า Google Sheets ทุกชั่วโมงด้วย Edge Function ตัวที่สอง</p>
+            </div>
+            <div class="box dash opt">
+              <div class="ic">🛠</div>
+              <h3>Supabase Studio</h3>
+              <div class="en">supabase.com/dashboard</div>
+              <p>UI สำเร็จรูปสำหรับ admin — แก้ rows ตรงๆ ดู logs query</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============== Schema ============== -->
+  <div class="schema">
+    <h2>🐘 Postgres Schema <span class="pg-badge">PostgreSQL 15</span></h2>
+    <p class="muted">5 ตารางหลัก ออกแบบให้รองรับ <b>concurrency</b> (version check) + <b>audit trail</b> (edits ไม่ทับของเดิม) + <b>realtime</b> (subscribe ได้ทันที)</p>
+
+    <div class="er">
+      <div class="table">
+        <div class="tname">🏪 locations <span class="key">PK: id</span></div>
+        <div class="col pk"><span class="n">id</span><span class="t">uuid</span></div>
+        <div class="col"><span class="n">name</span><span class="t">text · "ตู้แช่"</span></div>
+        <div class="col"><span class="n">created_at</span><span class="t">timestamptz</span></div>
+      </div>
+      <div class="table">
+        <div class="tname">📦 items <span class="key">PK: id</span></div>
+        <div class="col pk"><span class="n">id</span><span class="t">uuid</span></div>
+        <div class="col fk"><span class="n">location_id</span><span class="t">→ locations</span></div>
+        <div class="col"><span class="n">name</span><span class="t">text · "พริก"</span></div>
+        <div class="col"><span class="n">default_unit</span><span class="t">text · "กรัม"</span></div>
+        <div class="col"><span class="n">current_qty</span><span class="t">numeric · ยอดล่าสุด</span></div>
+      </div>
+      <div class="table">
+        <div class="tname">👤 users <span class="key">PK: line_user_id</span></div>
+        <div class="col pk"><span class="n">line_user_id</span><span class="t">text · LINE userId</span></div>
+        <div class="col"><span class="n">display_name</span><span class="t">text</span></div>
+        <div class="col"><span class="n">initials</span><span class="t">text · "รส"</span></div>
+        <div class="col"><span class="n">color</span><span class="t">text · #ec4899</span></div>
+      </div>
+      <div class="table">
+        <div class="tname">📝 entries <span class="key">PK: id · audit log</span></div>
+        <div class="col pk"><span class="n">id</span><span class="t">uuid</span></div>
+        <div class="col fk"><span class="n">item_id</span><span class="t">→ items</span></div>
+        <div class="col"><span class="n">action</span><span class="t">'in' | 'out' | 'adj'</span></div>
+        <div class="col"><span class="n">qty</span><span class="t">numeric</span></div>
+        <div class="col"><span class="n">unit</span><span class="t">text</span></div>
+        <div class="col fk"><span class="n">by_user_id</span><span class="t">→ users</span></div>
+        <div class="col"><span class="n">status</span><span class="t">'active' | 'edited' | 'voided'</span></div>
+        <div class="col"><span class="n">version</span><span class="t">int · optimistic lock</span></div>
+        <div class="col fk"><span class="n">ref_id</span><span class="t">→ entries · สำหรับ edit/void</span></div>
+        <div class="col"><span class="n">created_at</span><span class="t">timestamptz</span></div>
+      </div>
+      <div class="table">
+        <div class="tname">⏱ sessions <span class="key">PK: line_user_id</span></div>
+        <div class="col pk fk"><span class="n">line_user_id</span><span class="t">→ users</span></div>
+        <div class="col"><span class="n">mode</span><span class="t">'idle' | 'picking' | …</span></div>
+        <div class="col"><span class="n">ctx</span><span class="t">jsonb · {targetId, version}</span></div>
+        <div class="col"><span class="n">expires_at</span><span class="t">timestamptz · now()+10m</span></div>
+      </div>
+      <div class="table">
+        <div class="tname">📈 v_stock_view <span class="key">VIEW</span></div>
+        <div class="col"><span class="n">item.name</span><span class="t">text</span></div>
+        <div class="col"><span class="n">location.name</span><span class="t">text</span></div>
+        <div class="col"><span class="n">current_qty</span><span class="t">numeric</span></div>
+        <div class="col"><span class="n">last_updated</span><span class="t">timestamptz</span></div>
+        <div class="col"><span class="n">is_low</span><span class="t">bool · &lt; threshold</span></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span>🔑 <i>primary key</i></span>
+      <span>↗ <i>foreign key</i></span>
+      <span>Realtime subscribe: <code>entries</code>, <code>items</code></span>
+    </div>
+  </div>
+
+  <!-- ============== Core SQL: the apply_entry function ============== -->
+  <div class="schema">
+    <h2>⚙️ หัวใจของระบบ — Postgres Function ที่ป้องกันการชนกัน</h2>
+    <p class="muted">Edge Function เรียก <code>rpc('apply_entry', ...)</code> — ทุกอย่างเกิดใน transaction เดียว ถ้ามีคนอื่นแก้รายการเดียวกันก่อน <code>version</code> จะไม่ตรง → ROLLBACK และตอบ collision</p>
+<pre class="sql"><span class="c">-- เรียกเมื่อบันทึกใหม่ หรือแก้ของเดิม</span>
+<span class="k">create or replace function</span> <span class="t">apply_entry</span>(
+  p_item_id  <span class="t">uuid</span>,
+  p_action   <span class="t">text</span>,
+  p_qty      <span class="t">numeric</span>,
+  p_unit     <span class="t">text</span>,
+  p_user_id  <span class="t">text</span>,
+  p_edit_of  <span class="t">uuid</span> <span class="k">default</span> <span class="v">null</span>,    <span class="c">-- ถ้าเป็นการแก้</span>
+  p_expected_version <span class="t">int</span> <span class="k">default</span> <span class="v">null</span>
+) <span class="k">returns</span> <span class="t">jsonb</span> <span class="k">language</span> plpgsql <span class="k">as</span> $$
+<span class="k">declare</span>
+  v_delta  <span class="t">numeric</span>;
+  v_after  <span class="t">numeric</span>;
+  v_entry  <span class="t">entries</span>;
+<span class="k">begin</span>
+  <span class="c">-- ① ถ้าเป็นการแก้ ล็อกแถวเดิมไว้ก่อน เช็ค version</span>
+  <span class="k">if</span> p_edit_of <span class="k">is not null then</span>
+    <span class="k">select</span> * <span class="k">into</span> v_entry <span class="k">from</span> entries
+      <span class="k">where</span> id = p_edit_of <span class="k">for update</span>;
+    <span class="k">if</span> v_entry.version &lt;&gt; p_expected_version <span class="k">then</span>
+      <span class="k">return</span> jsonb_build_object(
+        <span class="s">'ok'</span>, <span class="v">false</span>, <span class="s">'collision'</span>, <span class="v">true</span>,
+        <span class="s">'message'</span>, <span class="s">'รายการนี้เพิ่งถูกแก้/ลบโดยคนอื่น'</span>);
+    <span class="k">end if</span>;
+    <span class="k">update</span> entries <span class="k">set</span> status=<span class="s">'edited'</span>, version=version+1
+      <span class="k">where</span> id = p_edit_of;
+    v_delta := signed_delta(v_entry.action, p_qty) - signed_delta(v_entry.action, v_entry.qty);
+  <span class="k">else</span>
+    v_delta := signed_delta(p_action, p_qty);
+  <span class="k">end if</span>;
+
+  <span class="c">-- ② อัปเดต current_qty ใน items (atomic)</span>
+  <span class="k">update</span> items <span class="k">set</span> current_qty = current_qty + v_delta
+    <span class="k">where</span> id = p_item_id
+    <span class="k">returning</span> current_qty <span class="k">into</span> v_after;
+
+  <span class="c">-- ③ append entry ใหม่ (audit row)</span>
+  <span class="k">insert into</span> entries (item_id, action, qty, unit, by_user_id, ref_id, status)
+    <span class="k">values</span> (p_item_id, p_action, p_qty, p_unit, p_user_id, p_edit_of,
+            <span class="k">case when</span> p_edit_of <span class="k">is null then</span> <span class="s">'active'</span> <span class="k">else</span> <span class="s">'active'</span> <span class="k">end</span>);
+
+  <span class="k">return</span> jsonb_build_object(<span class="s">'ok'</span>, <span class="v">true</span>, <span class="s">'after'</span>, v_after);
+<span class="k">end</span>; $$;</pre>
+  </div>
+
+  <!-- ============== Sequence diagram (Supabase-specific) ============== -->
+  <div class="seq">
+    <h2>เส้นทางของหนึ่งข้อความ — บน Supabase</h2>
+    <p class="muted" style="margin-top:0;font-size:13.5px;color:var(--muted)">ตั้งแต่ "เก กดส่ง" ถึง "ทุกคนเห็น" ใช้เวลา ~<b>400–900 มิลลิวินาที</b> (Edge Function ใกล้ user ในเอเชีย)</p>
+    <div class="seq-grid">
+      <div class="seq-col">📱 LINE Group</div>
+      <div class="seq-col">☁️ LINE Platform</div>
+      <div class="seq-col">⚡ Edge Function</div>
+      <div class="seq-col">🐘 Postgres</div>
+
+      <div class="seq-step">
+        <div class="line" style="left:12.5%;width:25%"></div>
+        <div class="arr" style="left:37.5%">▶</div>
+        <div class="lbl" style="left:18%">1. ส่ง "เบิกพริก 300"</div>
+      </div>
+      <div class="seq-step">
+        <div class="line" style="left:37.5%;width:25%"></div>
+        <div class="arr" style="left:62.5%">▶</div>
+        <div class="lbl" style="left:43%">2. webhook POST + signature</div>
+      </div>
+      <div class="seq-step note"><span>① verify signature  ② parse  ③ <code>select * from sessions where ...</code>  ④ <code>select rpc('apply_entry', ...)</code></span></div>
+      <div class="seq-step">
+        <div class="line" style="left:62.5%;width:25%"></div>
+        <div class="arr" style="left:87.5%">▶</div>
+        <div class="lbl" style="left:68%">3. RPC: UPDATE + INSERT (txn)</div>
+      </div>
+      <div class="seq-step">
+        <div class="line rev" style="left:62.5%;width:25%"></div>
+        <div class="arr rev" style="left:62.5%">◀</div>
+        <div class="lbl" style="left:68%">4. {ok:true, after:200}</div>
+      </div>
+      <div class="seq-step note"><span>📡 Realtime emit: <code>entries</code> insert → Dashboard ทุกตัวที่ subscribe ได้รับ event</span></div>
+      <div class="seq-step">
+        <div class="line rev" style="left:37.5%;width:25%"></div>
+        <div class="arr rev" style="left:37.5%">◀</div>
+        <div class="lbl" style="left:43%">5. fetch Reply API</div>
+      </div>
+      <div class="seq-step">
+        <div class="line rev" style="left:12.5%;width:25%"></div>
+        <div class="arr rev" style="left:12.5%">◀</div>
+        <div class="lbl" style="left:18%">6. ทุกคนเห็นในกลุ่ม</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== Notes ============== -->
+  <div class="grid">
+    <div class="panel">
+      <h2>📦 สิ่งที่ใช้ใน Supabase</h2>
+      <ul>
+        <li><span class="tag sb">Edge Functions</span> เขียนด้วย <b>TypeScript / Deno</b> รับ webhook + เรียก LINE Reply API</li>
+        <li><span class="tag sb">Postgres</span> เก็บ records, items, sessions ทุกอย่างใน DB เดียว</li>
+        <li><span class="tag sb">Realtime</span> push การเปลี่ยนแปลงสด ๆ ไปที่ dashboard ผ่าน WebSocket</li>
+        <li><span class="tag sb">Database Functions</span> (<code>apply_entry</code>) เป็นจุดเดียวที่อัปเดตยอด — ป้องกัน race condition</li>
+        <li><span class="tag sb">pg_cron</span> ลบ session หมดอายุทุก 5 นาที</li>
+        <li><span class="tag sb">RLS</span> dashboard อ่านได้ตามสิทธิ์ Edge Function เขียนด้วย service role</li>
+        <li><span class="tag sb">Storage</span> เผื่อในอนาคต รับรูปบิล/ใบเสร็จ จาก LINE</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h2>⚔️ ทำไมหลายคนพร้อมกันไม่ตีกัน (บน Postgres)</h2>
+      <ul>
+        <li><b><code>SELECT ... FOR UPDATE</code></b> ภายใน <code>apply_entry</code> — ล็อกแถว entry ที่กำลังแก้ คนอื่นต้องรอ</li>
+        <li><b>Optimistic version check</b> — ถ้า version ที่ส่งมาไม่ตรงกับใน DB → return collision ทันที</li>
+        <li><b>Transaction</b> — UPDATE items + INSERT entries อยู่ในจังหวะเดียว ถ้าพังจุดไหน rollback ทั้งหมด</li>
+        <li><b>Sessions แยกตาม userId</b> — เก็บในตาราง <code>sessions</code> (PK = line_user_id) จึงไม่ปะปนกัน</li>
+        <li><b>Realtime ไม่กระทบ correctness</b> — แค่ broadcast event ตามหลัง ไม่ใช่ source of truth</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h2>🛡 ความปลอดภัย</h2>
+      <ul>
+        <li><b>LINE signature</b> ตรวจสอบใน Edge Function ทุก request</li>
+        <li><b>Service Role Key</b> เก็บใน <code>supabase secrets set</code> ไม่ใส่ใน repo</li>
+        <li><b>RLS เปิดทุก table</b> — anon key อ่านได้แค่ที่ policy อนุญาต</li>
+        <li><b>Group allowlist</b> — บอททำงานเฉพาะ <code>groupId</code> ที่ลงทะเบียนใน <code>locations.line_group_id</code></li>
+        <li><b>Webhook URL</b> ใช้ Supabase domain เท่านั้น (HTTPS in)</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h2>🧱 ขั้นตอน deploy</h2>
+      <ul>
+        <li>สร้าง Supabase project (ฟรี) ได้ <code>SUPABASE_URL</code> + คีย์ 2 แบบ</li>
+        <li>รัน migration SQL — สร้าง 5 ตาราง + function <code>apply_entry</code> + RLS policies</li>
+        <li>สมัคร LINE Developers → สร้าง Messaging API channel ได้ <code>CHANNEL_SECRET</code> + <code>CHANNEL_ACCESS_TOKEN</code></li>
+        <li><code>supabase functions deploy line-webhook</code> — ได้ URL <code>https://&lt;proj&gt;.supabase.co/functions/v1/line-webhook</code></li>
+        <li>เอา URL ไปใส่ใน <i>Webhook URL</i> ของ LINE channel → เปิด "Use webhook" → ปิด "Auto-reply"</li>
+        <li>เชิญบอทเข้ากลุ่ม → ส่ง "สวัสดี" ทดสอบ</li>
+        <li>(เลือก) deploy Next.js dashboard ลง Vercel — ใช้ <code>anon</code> key + RLS</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============== Project file tree ============== -->
+  <div class="panel" style="margin-top:16px">
+    <h2>📁 โครงสร้างไฟล์ในโปรเจ็กต์</h2>
+<pre class="sql" style="background:#f8fafc;color:var(--ink)">line-stock/
+├─ supabase/
+│  ├─ functions/
+│  │  └─ line-webhook/
+│  │     ├─ index.ts          <span class="c">// entrypoint: verify + route</span>
+│  │     ├─ parser.ts         <span class="c">// "เบิกพริก 300" → {action,item,qty}</span>
+│  │     ├─ engine.ts         <span class="c">// เรียก rpc('apply_entry', ...)</span>
+│  │     ├─ line.ts           <span class="c">// LINE Reply / Quick Reply / Flex</span>
+│  │     └─ chitchat.ts       <span class="c">// greeting / typo / fallback</span>
+│  └─ migrations/
+│     ├─ 001_init.sql         <span class="c">// 5 tables + RLS</span>
+│     ├─ 002_apply_entry.sql  <span class="c">// Postgres function</span>
+│     └─ 003_cron.sql         <span class="c">// pg_cron cleanup</span>
+├─ dashboard/                 <span class="c">// Next.js (optional)</span>
+│  └─ app/page.tsx            <span class="c">// realtime stock view</span>
+├─ index.html                 <span class="c">// chat demo (this repo)</span>
+└─ architecture.html          <span class="c">// this diagram</span></pre>
+  </div>
+
+  <div class="footer">เปิด <code>index.html</code> เพื่อลองเล่นบอท — เปิดไฟล์นี้เพื่อดูภาพรวม Supabase</div>
+</div>
+</body>
+</html>

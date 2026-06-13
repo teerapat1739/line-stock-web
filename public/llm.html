@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ใส่ LLM เข้าไปยังไงให้คุ้ม — LINE Stock Bot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0f172a;
+    --muted:#5f6b7a;
+    --line:#e5e7eb;
+    --soft:#f6f7fb;
+    --green:#06c755;
+    --green-dark:#04a847;
+    --claude:#cc9b7a;      /* Claude-ish warm tone */
+    --claude-dark:#a06a4a;
+    --claude-soft:#fef3eb;
+    --pink:#ec4899;
+    --blue:#0ea5e9;
+    --purple:#7c3aed;
+    --amber:#f59e0b;
+    --slate:#475569;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;font-family:'Noto Sans Thai',system-ui,sans-serif;color:var(--ink);background:#eef1f5;font-size:16px}
+  .page{max-width:1100px;margin:24px auto;padding:0 16px}
+
+  header{background:#fff;border-radius:16px;padding:24px 28px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  h1{margin:0 0 6px;font-size:24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .ai-badge{display:inline-flex;align-items:center;gap:6px;background:var(--claude-soft);color:var(--claude-dark);padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid #f0d4be}
+  .ai-badge::before{content:"✨"}
+  header p{margin:0;color:var(--muted);font-size:15px;line-height:1.6}
+  .nav{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+  .nav a{font-size:13px;color:var(--green-dark);background:#f0fdf4;border:1px solid #bbf7d0;padding:5px 10px;border-radius:999px;text-decoration:none;font-weight:600}
+
+  .panel{background:#fff;border-radius:16px;padding:22px 24px;margin-top:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  h2{margin:0 0 8px;font-size:18px}
+  h3{margin:18px 0 8px;font-size:15px}
+  p.muted{color:var(--muted);font-size:14px;line-height:1.65;margin:6px 0}
+
+  /* === Hero ============ */
+  .hero{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;margin-top:6px}
+  @media (max-width:760px){.hero{grid-template-columns:1fr}}
+  .hbox{background:var(--soft);border:1.5px dashed var(--line);border-radius:12px;padding:14px;text-align:center}
+  .hbox .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;font-weight:600}
+  .hbox .v{font-size:18px;font-weight:600}
+  .hbox.fail{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+  .hbox.fail .v{color:#991b1b}
+  .hbox.ok{background:#ecfdf5;border-color:#a7f3d0}
+  .hbox.ok .v{color:#065f46}
+  .arrow-big{font-size:30px;color:var(--claude-dark);text-align:center}
+
+  /* === Tier diagram === */
+  .tiers{display:grid;gap:10px;margin-top:6px}
+  .tier{display:grid;grid-template-columns:60px 1fr auto;gap:14px;align-items:center;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:12px 16px}
+  .tier .n{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;font-size:14px}
+  .tier h3{margin:0 0 2px;font-size:15px}
+  .tier p{margin:0;font-size:13.5px;color:var(--muted)}
+  .tier .meta{text-align:right;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--slate)}
+  .tier .meta .lat{display:block;color:var(--slate)}
+  .tier .meta .cost{display:block;color:var(--green-dark);font-weight:700}
+  .tier.t0 .n{background:#0ea5e9}
+  .tier.t1 .n{background:var(--green)}
+  .tier.t2 .n{background:var(--claude)}
+  .tier.t3 .n{background:var(--purple)}
+  .tier.t4 .n{background:#94a3b8}
+
+  /* === Use cases === */
+  .cases{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:6px}
+  @media (max-width:760px){.cases{grid-template-columns:1fr}}
+  .case{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .case .ic{font-size:24px;margin-bottom:6px}
+  .case h3{margin:0 0 6px;font-size:15px}
+  .case p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.6}
+  .case .ex{display:block;margin-top:8px;background:#fff;border:1px dashed var(--line);border-radius:8px;padding:8px 10px;font-size:13.5px}
+  .case .ex b{color:var(--claude-dark)}
+
+  /* === Playground === */
+  .play{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px}
+  @media (max-width:760px){.play{grid-template-columns:1fr}}
+  .pinput label{font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#475569}
+  .pinput input{width:100%;border:2px solid var(--line);border-radius:10px;padding:12px 14px;font:inherit;font-size:18px;outline:none;font-family:'Noto Sans Thai',sans-serif}
+  .pinput input:focus{border-color:var(--claude)}
+  .pinput .examples{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .pinput .examples button{background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px;cursor:pointer}
+  .pinput .examples button:hover{background:var(--soft)}
+  .pinput .examples button.regex{border-color:#a7f3d0;background:#ecfdf5;color:#065f46}
+  .pinput .examples button.llm{border-color:#f0d4be;background:#fef3eb;color:var(--claude-dark)}
+  .pinput .examples button.fail{border-color:#fecaca;background:#fef2f2;color:#991b1b}
+
+  .trace{background:#0b1220;color:#e2e8f0;border-radius:12px;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.7;min-height:280px;position:relative;overflow-x:auto}
+  .trace .lbl{position:absolute;top:8px;right:10px;font-size:10.5px;color:#64748b;letter-spacing:.04em}
+  .trace .step{display:flex;gap:6px;padding:4px 0;align-items:baseline}
+  .trace .step .icon{font-family:initial;width:18px}
+  .trace .step.skip{color:#475569}
+  .trace .step.ok   {color:#86efac}
+  .trace .step.fail {color:#fca5a5}
+  .trace .step.run  {color:#fde68a}
+  .trace .step.go   {color:#7dd3fc}
+  .trace .result{margin-top:10px;padding-top:10px;border-top:1px dashed #1e293b;white-space:pre;font-size:12.5px}
+  .trace .k{color:#7dd3fc}
+  .trace .s{color:#fde68a}
+  .trace .n{color:#86efac}
+
+  /* === Code === */
+  pre.code{background:#0b1220;color:#e2e8f0;padding:18px 20px;border-radius:12px;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.7;overflow-x:auto;margin:0}
+  pre.code .k{color:#f472b6}
+  pre.code .t{color:#7dd3fc}
+  pre.code .s{color:#fde68a}
+  pre.code .c{color:#64748b}
+  pre.code .v{color:#86efac}
+  pre.code .f{color:#c4b5fd}
+  pre.code .a{color:#fda4af}
+
+  /* === Cost table === */
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:8px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--soft);color:#475467;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  tr.total td{font-weight:700;background:#f0fdf4}
+
+  /* === Multimodal === */
+  .mm{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:6px}
+  @media (max-width:760px){.mm{grid-template-columns:1fr}}
+  .mmcard{border:2px solid var(--claude);background:linear-gradient(180deg,var(--claude-soft) 0%, #fff 60%);border-radius:14px;padding:16px}
+  .mmcard h3{margin:0 0 6px;font-size:15.5px;display:flex;align-items:center;gap:8px}
+  .mmcard h3 .ic{font-size:22px}
+  .mmcard p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.6}
+  .mmcard ol{margin:8px 0 0;padding-left:20px;font-size:13px;color:var(--muted)}
+  .mmcard ol li{margin:4px 0}
+
+  .pill{display:inline-block;background:#f1f5f9;color:#334155;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;margin-right:4px}
+  .pill.claude{background:var(--claude-soft);color:var(--claude-dark);border:1px solid #f0d4be}
+  .pill.green{background:#dcfce7;color:#166534}
+  .pill.warn{background:#fef3c7;color:#92400e}
+
+  code{background:#f1f5f9;padding:1px 6px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:13px}
+
+  .footer{color:var(--muted);font-size:12.5px;margin:20px 0;text-align:center}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>ใส่ LLM เข้าไปยังไงให้คุ้ม <span class="ai-badge">Claude Haiku 4.5</span></h1>
+    <p>regex ทำได้ดีอยู่แล้วในรูปแบบมาตรฐาน — LLM มาช่วยเฉพาะตอน <b>ภาษาเป็นธรรมชาติ</b>, <b>หลายของในข้อความเดียว</b>, <b>เสียง</b>, หรือ <b>รูปภาพกระดาษเก่า</b> ใช้แบบนี้ค่าใช้จ่ายต่ำ ความแม่นยำสูง</p>
+    <div class="nav">
+      <a href="chat.html">← ตัวอย่างแชท</a>
+      <a href="architecture.html">สถาปัตยกรรม</a>
+      <a href="parser.html">parser.ts (regex)</a>
+    </div>
+  </header>
+
+  <!-- ============== Hero ============== -->
+  <div class="panel">
+    <h2>🧩 LLM เข้ามาช่วยที่ไหน</h2>
+    <div class="hero">
+      <div class="hbox fail">
+        <div class="lbl">ข้อความ</div>
+        <div class="v">"ขอเบิกพริกหน่อย<br>สามร้อยกรัม กับ ไก่ 2 ตัว"</div>
+        <div style="font-size:12px;margin-top:6px;color:#991b1b">regex ทำไม่ได้ ❌</div>
+      </div>
+      <div class="arrow-big">➜</div>
+      <div class="hbox ok">
+        <div class="lbl">หลัง LLM ตี</div>
+<div style="text-align:left;font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.6">[
+  {action:<b>"out"</b>, item:<b>"พริก"</b>, qty:<b>300</b>, unit:<b>"กรัม"</b>},
+  {action:<b>"out"</b>, item:<b>"ไก่"</b>,  qty:<b>2</b>,   unit:<b>"ตัว"</b>}
+]</div>
+      </div>
+    </div>
+    <p class="muted" style="text-align:center;margin-top:14px">LLM แปลง <b>ภาษาคนพูด</b> → <b>ข้อมูลโครงสร้าง</b> ตอนที่ regex จับไม่ได้ — แต่เรียกเฉพาะตอนจำเป็นเท่านั้น</p>
+  </div>
+
+  <!-- ============== Tier diagram ============== -->
+  <div class="panel">
+    <h2>🪜 สถาปัตยกรรมแบบ "หลายชั้น" — ถูก/เร็วก่อน ค่อย fallback ไป LLM</h2>
+    <p class="muted">ข้อความเข้ามาที่ Edge Function จะลองจาก <b>ชั้นที่ถูกที่สุด</b> ก่อน ถ้าไม่ผ่านค่อยไป tier ถัดไป — ~90% ของข้อความจริงไม่จำเป็นต้องเรียก LLM เลย</p>
+
+    <div class="tiers">
+      <div class="tier t0">
+        <div class="n">0</div>
+        <div>
+          <h3>กดปุ่ม / Quick Reply</h3>
+          <p>ผู้ใช้แตะปุ่มในแชท — payload เป็น JSON อยู่แล้ว ไม่ต้อง parse เลย</p>
+        </div>
+        <div class="meta"><span class="lat">~0 ms</span><span class="cost">฿0</span></div>
+      </div>
+      <div class="tier t1">
+        <div class="n">1</div>
+        <div>
+          <h3>Regex parser (parser.ts)</h3>
+          <p>รูปแบบมาตรฐาน <code>เบิกพริก 300</code>, <code>มีไก่ไทย 9 ตัว</code> — ทำได้ทันที</p>
+        </div>
+        <div class="meta"><span class="lat">~1 ms</span><span class="cost">฿0</span></div>
+      </div>
+      <div class="tier t2">
+        <div class="n">2</div>
+        <div>
+          <h3>LLM parser (Claude Haiku 4.5)</h3>
+          <p>ภาษาธรรมชาติ / หลายของในข้อความเดียว / เลขเป็นคำ — บังคับ output ผ่าน <b>tool use</b></p>
+        </div>
+        <div class="meta"><span class="lat">~300–800 ms</span><span class="cost">~฿0.01</span></div>
+      </div>
+      <div class="tier t3">
+        <div class="n">3</div>
+        <div>
+          <h3>LLM clarify</h3>
+          <p>ถ้าตีความได้หลายแบบ — บอทถามกลับเป็นภาษาธรรมชาติ "หมายถึง พริกขี้หนู หรือ พริกชี้ฟ้า คะ"</p>
+        </div>
+        <div class="meta"><span class="lat">~500 ms</span><span class="cost">~฿0.01</span></div>
+      </div>
+      <div class="tier t4">
+        <div class="n">4</div>
+        <div>
+          <h3>Polite fallback</h3>
+          <p>ไม่เข้าใจจริง ๆ → ตอบสุภาพ + แนะนำให้กดปุ่ม</p>
+        </div>
+        <div class="meta"><span class="lat">~0 ms</span><span class="cost">฿0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== Use cases ============== -->
+  <div class="panel">
+    <h2>✨ 6 กรณีที่ LLM ช่วยได้จริง</h2>
+    <div class="cases">
+      <div class="case">
+        <div class="ic">💬</div>
+        <h3>ภาษาธรรมชาติ / สุภาพ</h3>
+        <p>คนพิมพ์ตามจริงๆ ไม่ตามรูปแบบเปะ</p>
+        <div class="ex">"<b>ขอเบิกพริกหน่อย</b> 300 กรัมจ้า"<br>"<b>หยิบไก่สดออก</b> 2 ตัวค่ะ"</div>
+      </div>
+      <div class="case">
+        <div class="ic">🧮</div>
+        <h3>ตัวเลขเป็นคำไทย</h3>
+        <p>"สามร้อย", "ห้าขีด", "โล" คนแก่พิมพ์แบบนี้บ่อย</p>
+        <div class="ex">"เบิกพริก <b>สามร้อย</b> กรัม"<br>"เติมข้าวสาร <b>สอง โล</b>"</div>
+      </div>
+      <div class="case">
+        <div class="ic">🍱</div>
+        <h3>หลายของในข้อความเดียว</h3>
+        <p>regex ทำไม่ได้ — แต่ LLM แตกออกเป็น array ได้</p>
+        <div class="ex">"<b>เบิกพริก 300 ไก่ 2 ตัว และน้ำมัน 1 ขวด</b>"</div>
+      </div>
+      <div class="case">
+        <div class="ic">🎤</div>
+        <h3>ข้อความเสียง (Voice Note)</h3>
+        <p>LINE รองรับเสียง → STT → Claude clean-up คำพูดเป็น record</p>
+        <div class="ex">เสียงพูด → "เออ เบิกพริกสามร้อยกรัมนะ" → record</div>
+      </div>
+      <div class="case">
+        <div class="ic">📸</div>
+        <h3>รูปกระดาษเก่า (Vision)</h3>
+        <p>ถ่ายรูปกระดาษบันทึกสต็อค → Claude Vision อ่านทั้งหน้า → batch insert</p>
+        <div class="ex">ส่งรูปกระดาษ → หลายสิบ records พร้อมกัน</div>
+      </div>
+      <div class="case">
+        <div class="ic">🎯</div>
+        <h3>ปรับชื่อให้ตรงของในระบบ</h3>
+        <p>"พริกขี้หนู" / "พริก ข.น." / "พริกแห้ง" → map ไป item ที่มี</p>
+        <div class="ex">user: "เบิก <b>พริก ข.น.</b> 200" → ระบบเก็บเป็น "พริกขี้หนู"</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== Code ============== -->
+  <div class="panel">
+    <h2>💻 โค้ดจริง — Edge Function เรียก Claude (Anthropic SDK)</h2>
+    <p class="muted">รันบน Supabase Edge Functions (Deno) — ใช้ <b>tool use แบบบังคับ</b> เพื่อให้ Claude คืน JSON ตาม schema เสมอ + <b>prompt caching</b> เพื่อลดค่าใช้จ่าย</p>
+
+<pre class="code"><span class="c">// supabase/functions/line-webhook/llm.ts</span>
+<span class="k">import</span> <span class="v">Anthropic</span> <span class="k">from</span> <span class="s">"npm:@anthropic-ai/sdk"</span>;
+<span class="k">import</span> { <span class="v">parseRecord</span> } <span class="k">from</span> <span class="s">"./parser.ts"</span>;
+
+<span class="k">const</span> <span class="v">client</span> = <span class="k">new</span> <span class="t">Anthropic</span>();   <span class="c">// uses ANTHROPIC_API_KEY env var</span>
+
+<span class="c">// ── Schema ที่บังคับให้ Claude เติม ──────────────────────────────</span>
+<span class="k">const</span> <span class="v">PARSE_TOOL</span> = {
+  name: <span class="s">"parse_stock_message"</span>,
+  description: <span class="s">"แยกข้อความบันทึกสต็อคออกเป็น records, หรือบอกว่าเป็น chitchat / unknown"</span>,
+  input_schema: {
+    type: <span class="s">"object"</span>,
+    properties: {
+      kind: { type: <span class="s">"string"</span>, enum: [<span class="s">"record"</span>, <span class="s">"chitchat"</span>, <span class="s">"unknown"</span>] },
+      records: {
+        type: <span class="s">"array"</span>,
+        items: {
+          type: <span class="s">"object"</span>,
+          properties: {
+            action: { type: <span class="s">"string"</span>, enum: [<span class="s">"in"</span>, <span class="s">"out"</span>, <span class="s">"adj"</span>] },
+            item:   { type: <span class="s">"string"</span> },
+            qty:    { type: <span class="s">"number"</span> },
+            unit:   { type: <span class="s">"string"</span> },
+            confidence: { type: <span class="s">"number"</span> }     <span class="c">// 0-1, &lt;0.8 → ถามยืนยัน</span>
+          },
+          required: [<span class="s">"action"</span>, <span class="s">"item"</span>, <span class="s">"qty"</span>, <span class="s">"unit"</span>, <span class="s">"confidence"</span>]
+        }
+      },
+      reply: { type: <span class="s">"string"</span> }       <span class="c">// ถ้า kind=chitchat</span>
+    },
+    required: [<span class="s">"kind"</span>]
+  }
+};
+
+<span class="k">const</span> <span class="v">SYSTEM</span> = <span class="s">`คุณเป็น parser ของระบบบันทึกสต็อคในร้านอาหารไทย
+แปลงข้อความผู้ใช้เป็น records:
+  action: "in"  = เติม/เพิ่ม/มี
+  action: "out" = เบิก/ออก
+  action: "adj" = เกิน (ของเกินจากที่ควรมี)
+ถ้าเป็นทักทาย/ขอบคุณ → kind="chitchat" + reply ภาษาไทยสุภาพ
+ถ้าไม่เข้าใจ → kind="unknown"
+ตัวเลขคำ ("สามร้อย"=300, "ห้าขีด"=500g, "โล/กก."=กิโลกรัม) แปลงให้</span>
+
+<span class="c">// ── Hybrid parser: regex first, LLM fallback ──────────────────────</span>
+<span class="k">export async function</span> <span class="f">parseHybrid</span>(text: <span class="t">string</span>, knownItems: <span class="t">string</span>[]) {
+  <span class="c">// Tier 1: regex</span>
+  <span class="k">const</span> quick = <span class="f">parseRecord</span>(text);
+  <span class="k">if</span> (quick) <span class="k">return</span> { source: <span class="s">"regex"</span>, records: [quick] };
+
+  <span class="c">// Tier 2: LLM fallback</span>
+  <span class="k">const</span> response = <span class="k">await</span> client.messages.<span class="f">create</span>({
+    model: <span class="s">"claude-haiku-4-5"</span>,
+    max_tokens: <span class="v">512</span>,
+    system: [
+      { type: <span class="s">"text"</span>, text: <span class="v">SYSTEM</span>,
+        cache_control: { type: <span class="s">"ephemeral"</span> } },              <span class="c">// ① cache system prompt</span>
+      { type: <span class="s">"text"</span>, text: <span class="s">`ของในระบบ: ${knownItems.join(<span class="s">", "</span>)}`</span>,
+        cache_control: { type: <span class="s">"ephemeral"</span> } }               <span class="c">// ② cache item list</span>
+    ],
+    tools: [<span class="v">PARSE_TOOL</span>],
+    tool_choice: { type: <span class="s">"tool"</span>, name: <span class="s">"parse_stock_message"</span> },   <span class="c">// ③ บังคับ tool use</span>
+    messages: [{ role: <span class="s">"user"</span>, content: text }]
+  });
+
+  <span class="k">const</span> block = response.content.<span class="f">find</span>(b =&gt; b.type === <span class="s">"tool_use"</span>);
+  <span class="k">return</span> { source: <span class="s">"llm"</span>, ...(block?.input <span class="k">as any</span>) };
+}</pre>
+
+    <h3 style="margin-top:18px">หัวใจของโค้ดนี้คือ 3 จุด</h3>
+    <ul style="color:var(--muted);font-size:14px;line-height:1.7">
+      <li><b>① + ②  Prompt caching</b> — system prompt + item list เปลี่ยนน้อย แคชไว้ครั้งละ 5 นาที <b>ลดต้นทุน ~90%</b></li>
+      <li><b>③ Forced tool use</b> — <code>tool_choice: {type:"tool", name:...}</code> บังคับให้ Claude คืน JSON ตาม schema เสมอ ไม่ free-form text</li>
+      <li><b>regex ก่อน LLM ทีหลัง</b> — ถ้า regex ผ่าน ไม่ต้องเรียก LLM เลย (ประหยัด + เร็ว)</li>
+    </ul>
+  </div>
+
+  <!-- ============== Playground ============== -->
+  <div class="panel">
+    <h2>🎮 ลองดู — pipeline ทำงานยังไง</h2>
+    <p class="muted">พิมพ์ดู จะเห็น tier 1 (regex) ลองก่อน ถ้า fail ค่อยขึ้น tier 2 (LLM mock) ผลลัพธ์รวมท้ายสุด</p>
+
+    <div class="play">
+      <div class="pinput">
+        <label>ข้อความ</label>
+        <input id="input" value="ขอเบิกพริกหน่อย 300 กรัม กับไก่ 2 ตัว" autocomplete="off" />
+        <div class="examples" id="examples">
+          <button class="regex" data-text="เบิกพริก 300">เบิกพริก 300 (regex)</button>
+          <button class="regex" data-text="มีไก่ไทย 9 ตัว">มีไก่ไทย 9 ตัว (regex)</button>
+          <button class="llm" data-text="ขอเบิกพริกหน่อย 300 กรัม">ขอเบิกพริกหน่อย…</button>
+          <button class="llm" data-text="เบิกพริก สามร้อย กรัม">เบิกพริก สามร้อย กรัม</button>
+          <button class="llm" data-text="ขอเบิกพริกหน่อย 300 กรัม กับไก่ 2 ตัว">multi-item</button>
+          <button class="llm" data-text="เบิก พริก ข.น. 200">พริก ข.น. (ย่อ)</button>
+          <button class="llm" data-text="หยิบไก่สดออก 2 ตัวค่ะ">หยิบไก่สดออก…</button>
+          <button class="llm" data-text="สวัสดี">สวัสดี (chitchat)</button>
+          <button class="fail" data-text="วันนี้อากาศดีจัง">อากาศดี (unknown)</button>
+        </div>
+      </div>
+      <div class="trace" id="trace"><span class="lbl">PIPELINE TRACE</span></div>
+    </div>
+  </div>
+
+  <!-- ============== Multimodal ============== -->
+  <div class="panel">
+    <h2>🎤📸 Multimodal: เสียง + รูป</h2>
+    <p class="muted">LINE ส่งได้ทั้งเสียงและรูป — เรามี payload เป็น URL ของ media ส่งต่อให้ Claude วิเคราะห์</p>
+
+    <div class="mm">
+      <div class="mmcard">
+        <h3><span class="ic">🎤</span> Voice Note → record</h3>
+        <p>พนักงานกดอัดเสียง "เออ เบิกพริกสามร้อยกรัม กับ ไก่สองตัวนะ"</p>
+        <ol>
+          <li>ดึง audio URL จาก LINE Content API</li>
+          <li>STT ด้วย OpenAI Whisper API <i>หรือ</i> Google Speech-to-Text</li>
+          <li>ส่ง text ที่ได้เข้า <code>parseHybrid()</code> ปกติ</li>
+          <li>ตอบในแชทเหมือนพิมพ์ทุกประการ</li>
+        </ol>
+        <p style="margin-top:8px"><span class="pill claude">Claude</span><span class="pill green">Whisper API</span><span class="pill warn">+~฿0.05/นาทีของเสียง</span></p>
+      </div>
+
+      <div class="mmcard">
+        <h3><span class="ic">📸</span> รูปกระดาษเก่า → bulk insert</h3>
+        <p>ส่งรูปกระดาษบันทึกสต็อคทั้งหน้า → Claude Vision อ่านทั้งตาราง</p>
+        <ol>
+          <li>ดึงรูปจาก LINE Content API</li>
+          <li>ส่งรูป + schema ให้ Claude (เป็น <code>image</code> content block)</li>
+          <li>ได้ array ของ records กลับมา</li>
+          <li>บอท preview ในแชท → "ยืนยัน 12 รายการนี้ไหมคะ?"</li>
+          <li>กดยืนยัน → batch insert เข้า Postgres</li>
+        </ol>
+        <p style="margin-top:8px"><span class="pill claude">Claude Vision</span><span class="pill warn">~฿1-2/รูป</span></p>
+      </div>
+    </div>
+
+<pre class="code" style="margin-top:14px"><span class="c">// ตัวอย่างเรียก Claude Vision อ่านรูปกระดาษ</span>
+<span class="k">const</span> response = <span class="k">await</span> client.messages.<span class="f">create</span>({
+  model: <span class="s">"claude-sonnet-4-6"</span>,    <span class="c">// Sonnet มีความสามารถ vision ดีกว่า Haiku</span>
+  max_tokens: <span class="v">2048</span>,
+  system: <span class="s">"คุณอ่านตารางบันทึกสต็อคจากรูปกระดาษ คืน records ทั้งหมด"</span>,
+  tools: [<span class="v">PARSE_TOOL</span>],
+  tool_choice: { type: <span class="s">"tool"</span>, name: <span class="s">"parse_stock_message"</span> },
+  messages: [{
+    role: <span class="s">"user"</span>,
+    content: [
+      { type: <span class="s">"image"</span>, source: { type: <span class="s">"url"</span>, url: lineImageUrl } },
+      { type: <span class="s">"text"</span>, text: <span class="s">"อ่านทุกแถวที่ไม่ว่างในตารางนี้"</span> }
+    ]
+  }]
+});</pre>
+  </div>
+
+  <!-- ============== Cost analysis ============== -->
+  <div class="panel">
+    <h2>💰 ต้นทุนจริง (ร้านเล็ก-กลาง)</h2>
+    <p class="muted">สมมติว่าวันหนึ่งทั้งร้านส่งข้อความ <b>100 ข้อความ</b> ในกลุ่ม — แบ่งสัดส่วนตามชั้น</p>
+    <table>
+      <thead>
+        <tr><th>Tier</th><th>%</th><th>จำนวน/วัน</th><th>ต้นทุน/ข้อความ</th><th class="num">ต้นทุน/เดือน</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>0. ปุ่ม Quick Reply</td><td>40%</td><td>40</td><td>฿0</td><td class="num">฿0</td></tr>
+        <tr><td>1. Regex parser</td><td>50%</td><td>50</td><td>฿0</td><td class="num">฿0</td></tr>
+        <tr><td>2. LLM parser (Haiku + cached)</td><td>8%</td><td>8</td><td>~฿0.01</td><td class="num">~฿2.40</td></tr>
+        <tr><td>3. LLM clarify</td><td>1%</td><td>1</td><td>~฿0.01</td><td class="num">~฿0.30</td></tr>
+        <tr><td>4. Polite fallback</td><td>1%</td><td>1</td><td>฿0</td><td class="num">฿0</td></tr>
+        <tr class="total"><td colspan="4">รวม</td><td class="num">~฿2.70/เดือน</td></tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:14px">📸 รูปกระดาษเก่า (ใช้ Sonnet) คิดต่างหาก ~฿1-2 ต่อรูป — เผื่ออัด archive ครั้งเดียว ไม่ใช่รายวัน<br>
+    🎤 เสียง — Whisper API ~฿0.05/นาที พนักงานพูดเฉลี่ย 10 วินาที → ~฿0.008/ข้อความ</p>
+
+    <h3>เคล็ดลับลดต้นทุน</h3>
+    <ul style="color:var(--muted);font-size:14px;line-height:1.7">
+      <li><b>Cache อย่างน้อย 1024 tokens</b> — system prompt ของเรามี few-shot examples ทำให้ผ่าน threshold</li>
+      <li><b>Cache TTL 5 นาที</b> เพียงพอ ถ้าร้านมีคนพิมพ์อยู่บ่อย ๆ — cache hit rate &gt; 80%</li>
+      <li><b>ตอบสั้น</b> — output JSON ของเรา ~50 tokens เท่านั้น</li>
+      <li><b>Haiku 4.5 พอ</b> — งาน parser ไม่ต้องใช้ Sonnet/Opus ยกเว้น vision</li>
+      <li><b>Batch API</b> — สำหรับ workflow ที่ไม่ realtime (เช่น re-parse logs เก่า) ลดราคาอีก 50%</li>
+    </ul>
+  </div>
+
+  <!-- ============== Caveats ============== -->
+  <div class="panel">
+    <h2>⚠️ ข้อควรระวังเมื่อใช้ LLM</h2>
+    <ul style="color:var(--muted);font-size:14px;line-height:1.75">
+      <li><b>ยืนยันก่อนเขียน DB</b> — ถ้า <code>confidence &lt; 0.8</code> ให้บอทถาม "หมายถึงแบบนี้ใช่ไหม?" + ปุ่ม [ใช่] [ไม่ใช่]</li>
+      <li><b>Map item กับของในระบบ</b> — Claude อาจสร้างชื่อใหม่ "พริกชี้ฟ้า" ทั้งที่เราเก็บไว้แค่ "พริก" → เทียบกับ <code>items</code> table ก่อน insert</li>
+      <li><b>Rate limit + retry</b> — Claude API มี rate limit; ใช้ exponential backoff; ถ้า fail ให้ fallback ไป tier 4 (polite reply)</li>
+      <li><b>ห้ามเชื่อ qty ตรง ๆ ถ้าใหญ่ผิดปกติ</b> — ถ้า qty &gt; 10x ค่าเฉลี่ยปกติ → บอทถามยืนยันก่อน</li>
+      <li><b>Log ทุก LLM call</b> — เก็บ input/output ลงตาราง <code>llm_logs</code> เพื่อตรวจ คาลิเบรต prompt ภายหลัง</li>
+      <li><b>Cost ceiling</b> — ตั้ง daily cap ต่อ workspace เผื่อมีคนสแปม ป้องกัน bill ช็อก</li>
+      <li><b>ไม่ใส่ secret ใน prompt</b> — system prompt มีแต่ schema ไม่มี customer data</li>
+    </ul>
+  </div>
+
+  <div class="footer">เริ่มต้นด้วย Tier 1 (regex) ให้ใช้งานได้ก่อน — เปิด Tier 2 (LLM) ทีหลังเมื่อเริ่มเห็นข้อความที่ regex ทำไม่ได้ในชีวิตจริง</div>
+</div>
+
+<script>
+/* ============================================
+   Simulate the hybrid pipeline
+   Tier 1: real regex
+   Tier 2: mocked LLM response (hardcoded examples)
+   ============================================ */
+
+const ACTIONS = {"มี":"in","เติม":"in","เพิ่ม":"in","เบิก":"out","ออก":"out","เกิน":"adj"};
+const DEFAULT_UNITS = {"ไก่ไทย":"ตัว","ไก่":"ตัว","หมูสับ":"ถุง","น้ำตาล":"ถุง","เกลือ":"ถุง","ข้าวสาร":"กก."};
+const ACTION_RE = /^(มี|เติม|เพิ่ม|เบิก|ออก|เกิน)\s*(.*)$/;
+const TAIL_RE   = /^(.+?)\s*(\d+(?:\.\d+)?)\s*([฀-๿a-zA-Z./]*)$/;
+
+function regexParse(raw){
+  const text = raw.trim().replace(/\s+/g," ");
+  const a = text.match(ACTION_RE); if (!a) return null;
+  const rest = a[2].trim(); if (!rest) return null;
+  const t = rest.match(TAIL_RE); if (!t) return null;
+  const item = t[1].trim();
+  const qty = parseFloat(t[2]);
+  const unit = (t[3]||"").trim() || DEFAULT_UNITS[item] || "กรัม";
+  if (!item || !isFinite(qty) || qty <= 0) return null;
+  return { action: ACTIONS[a[1]], item, qty, unit };
+}
+
+/* Mock Claude responses for tier-2 examples */
+const LLM_MOCK = {
+  "ขอเบิกพริกหน่อย 300 กรัม": {
+    kind:"record", records:[{action:"out", item:"พริก", qty:300, unit:"กรัม", confidence:0.95}]
+  },
+  "เบิกพริก สามร้อย กรัม": {
+    kind:"record", records:[{action:"out", item:"พริก", qty:300, unit:"กรัม", confidence:0.92}]
+  },
+  "ขอเบิกพริกหน่อย 300 กรัม กับไก่ 2 ตัว": {
+    kind:"record", records:[
+      {action:"out", item:"พริก", qty:300, unit:"กรัม", confidence:0.95},
+      {action:"out", item:"ไก่",  qty:2,   unit:"ตัว",  confidence:0.94}
+    ]
+  },
+  "เบิก พริก ข.น. 200": {
+    kind:"record", records:[{action:"out", item:"พริกขี้หนู", qty:200, unit:"กรัม", confidence:0.78}]
+  },
+  "หยิบไก่สดออก 2 ตัวค่ะ": {
+    kind:"record", records:[{action:"out", item:"ไก่สด", qty:2, unit:"ตัว", confidence:0.91}]
+  },
+  "สวัสดี": {
+    kind:"chitchat", reply:"สวัสดีค่ะ 👋 อยากบันทึกอะไรคะ"
+  },
+  "วันนี้อากาศดีจัง": {
+    kind:"unknown"
+  }
+};
+
+function llmMock(text){
+  // exact match for demo
+  return LLM_MOCK[text.trim()] || { kind:"unknown" };
+}
+
+const input  = document.getElementById("input");
+const trace  = document.getElementById("trace");
+
+function render(){
+  const text = input.value;
+  trace.innerHTML = `<span class="lbl">PIPELINE TRACE</span>`;
+  const log = (cls, icon, msg) => {
+    const el = document.createElement("div");
+    el.className = "step " + cls;
+    el.innerHTML = `<span class="icon">${icon}</span><span>${esc(msg)}</span>`;
+    trace.appendChild(el);
+  };
+
+  log("go", "▶", `input: "${text}"`);
+
+  // Tier 0: detect button-like (skipped in demo, free text only)
+  log("skip","·","Tier 0 (buttons) — ไม่ใช่ payload ปุ่ม ข้าม");
+
+  // Tier 1: regex
+  log("run", "1️⃣", "Tier 1: regex parser (parser.ts)");
+  const r1 = regexParse(text);
+  if (r1){
+    log("ok", "✓", `regex ผ่าน — ใช้ผลลัพธ์นี้ (latency ~1ms, cost ฿0)`);
+    showResult({source:"regex", kind:"record", records:[r1]});
+    return;
+  }
+  log("fail","✗", "regex ไม่ตรง → fallback ไป Tier 2");
+
+  // Tier 2: LLM mock
+  log("run", "2️⃣", "Tier 2: Claude Haiku 4.5 + tool use");
+  log("skip","·","prompt cache hit (system + items list)");
+  log("skip","·",`fetch('https://api.anthropic.com/v1/messages') — ~500ms`);
+  const r2 = llmMock(text);
+  if (r2.kind === "record" && r2.records?.length){
+    const lows = r2.records.filter(x=>x.confidence<0.8);
+    if (lows.length){
+      log("run","3️⃣", `Tier 3: confidence ต่ำ (${lows.map(x=>x.confidence).join(", ")}) → ขอ confirm`);
+    }
+    log("ok","✓", `LLM ผ่าน — ${r2.records.length} record(s)`);
+    showResult({source:"llm", ...r2});
+    return;
+  }
+  if (r2.kind === "chitchat"){
+    log("ok","💬", `LLM = chitchat → ตอบ "${r2.reply}"`);
+    showResult({source:"llm", ...r2});
+    return;
+  }
+  log("fail","✗","LLM = unknown → Tier 4 fallback");
+  log("ok","🛟", `Tier 4: ตอบสุภาพ "ขอโทษค่ะ ไม่เข้าใจ ลองพิมพ์ 'เบิกพริก 300' หรือกดปุ่ม"`);
+  showResult({source:"fallback", kind:"unknown"});
+}
+
+function showResult(r){
+  const div = document.createElement("div");
+  div.className = "result";
+  div.innerHTML = `<span class="k">// final result</span>\n` + colorJson(r);
+  trace.appendChild(div);
+}
+
+function colorJson(o){
+  return JSON.stringify(o, null, 2)
+    .replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:')
+    .replace(/: "([^"]*)"/g, ': <span class="s">"$1"</span>')
+    .replace(/: (\d+(?:\.\d+)?)/g, ': <span class="n">$1</span>');
+}
+
+function esc(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"})[c]); }
+
+input.addEventListener("input", render);
+document.getElementById("examples").addEventListener("click", e=>{
+  const b = e.target.closest("button"); if(!b) return;
+  input.value = b.dataset.text;
+  render();
+});
+
+render();
+</script>
+</body>
+</html>

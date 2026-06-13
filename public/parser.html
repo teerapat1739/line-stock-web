@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>parser.ts — วิธีตีความข้อความ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0f172a;
+    --muted:#5f6b7a;
+    --line:#e5e7eb;
+    --soft:#f6f7fb;
+    --green:#06c755;
+    --green-dark:#04a847;
+    --action:#ec4899;   /* pink — for "เบิก/มี/เกิน" */
+    --item:#0ea5e9;     /* blue  — for item name */
+    --qty:#7c3aed;      /* purple— for number */
+    --unit:#f59e0b;     /* amber — for unit */
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;font-family:'Noto Sans Thai',system-ui,sans-serif;color:var(--ink);background:#eef1f5;font-size:16px}
+  .page{max-width:1100px;margin:24px auto;padding:0 16px}
+
+  header{background:#fff;border-radius:16px;padding:24px 28px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  h1{margin:0 0 6px;font-size:24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header p{margin:0;color:var(--muted);font-size:15px;line-height:1.6}
+  .nav{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+  .nav a{font-size:13px;color:var(--green-dark);background:#f0fdf4;border:1px solid #bbf7d0;padding:5px 10px;border-radius:999px;text-decoration:none;font-weight:600}
+
+  .panel{background:#fff;border-radius:16px;padding:22px 24px;margin-top:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  h2{margin:0 0 8px;font-size:18px}
+  h3{margin:18px 0 8px;font-size:15px}
+  p.muted{color:var(--muted);font-size:14px;line-height:1.65;margin:6px 0}
+
+  /* === Hero: tokenized input === */
+  .hero{display:grid;grid-template-columns:1fr auto 1fr;gap:18px;align-items:center;margin-top:6px}
+  @media (max-width:760px){.hero{grid-template-columns:1fr}}
+  .raw{font-size:32px;font-weight:700;text-align:center;padding:18px 14px;background:var(--soft);border-radius:12px;border:1.5px dashed var(--line);font-family:'Noto Sans Thai',sans-serif}
+  .raw .t{color:var(--ink)}
+  .arrow-big{font-size:30px;color:var(--green);text-align:center}
+  .parsed{background:#0b1220;color:#e2e8f0;border-radius:12px;padding:16px 18px;font-family:'JetBrains Mono',monospace;font-size:14px;line-height:1.7;white-space:pre}
+  .parsed .k{color:#7dd3fc}
+  .parsed .s{color:#fde68a}
+  .parsed .n{color:#86efac}
+
+  .tokens{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:18px}
+  .tok{display:flex;flex-direction:column;align-items:center;padding:10px 14px;border-radius:12px;font-weight:700;font-size:18px;min-width:80px;border:2px solid}
+  .tok .lbl{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px;opacity:.8}
+  .tok.a{color:var(--action);background:#fdf2f8;border-color:#fbcfe8}
+  .tok.i{color:var(--item);background:#eff6ff;border-color:#bae6fd}
+  .tok.q{color:var(--qty);background:#f5f3ff;border-color:#ddd6fe}
+  .tok.u{color:var(--unit);background:#fffbeb;border-color:#fde68a}
+
+  /* === Steps === */
+  .steps{display:grid;gap:12px;margin-top:8px}
+  .step{display:grid;grid-template-columns:36px 1fr;gap:14px;align-items:start;background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .step .n{width:32px;height:32px;border-radius:50%;background:var(--green);color:#fff;font-weight:700;display:grid;place-items:center}
+  .step h3{margin:0 0 4px;font-size:15px}
+  .step p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.6}
+  .step pre{margin:8px 0 0}
+  .step .seg{display:inline-block;padding:1px 8px;border-radius:6px;font-weight:700;font-family:'Noto Sans Thai',sans-serif}
+  .seg.a{color:var(--action);background:#fdf2f8}
+  .seg.i{color:var(--item);background:#eff6ff}
+  .seg.q{color:var(--qty);background:#f5f3ff}
+  .seg.u{color:var(--unit);background:#fffbeb}
+
+  /* === Regex breakdown === */
+  .regex-row{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line)}
+  .regex-row:last-child{border-bottom:0}
+  .regex-row code{font-family:'JetBrains Mono',monospace;font-size:13.5px;background:#0b1220;color:#fde68a;padding:3px 8px;border-radius:6px;white-space:nowrap}
+  .regex-row .desc{font-size:13.5px;color:var(--muted);line-height:1.55}
+  .regex-row .desc b{color:var(--ink)}
+
+  /* === Playground === */
+  .play{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px}
+  @media (max-width:760px){.play{grid-template-columns:1fr}}
+  .pinput label{font-size:12.5px;font-weight:600;color:var(--slate);text-transform:uppercase;letter-spacing:.04em;color:#475569}
+  .pinput input{width:100%;border:2px solid var(--line);border-radius:10px;padding:12px 14px;font:inherit;font-size:18px;outline:none;font-family:'Noto Sans Thai',sans-serif}
+  .pinput input:focus{border-color:var(--green)}
+  .pinput .examples{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .pinput .examples button{background:#f1f5f9;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px;cursor:pointer}
+  .pinput .examples button:hover{background:#e2e8f0}
+
+  .poutput{background:#0b1220;color:#e2e8f0;border-radius:12px;padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.7;min-height:200px;position:relative}
+  .poutput.error{border:2px solid #f87171}
+  .poutput.ok{border:2px solid #34d399}
+  .poutput .k{color:#7dd3fc}
+  .poutput .s{color:#fde68a}
+  .poutput .n{color:#86efac}
+  .poutput .c{color:#64748b}
+  .poutput .err{color:#fca5a5}
+  .poutput .lbl{position:absolute;top:8px;right:10px;font-size:11px;color:#64748b;letter-spacing:.04em}
+
+  /* === Trace table === */
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--soft);color:#475467;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  td.bad{background:#fef2f2;color:#991b1b}
+  td.good{background:#f0fdf4}
+  td code{background:#f1f5f9;padding:1px 6px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:12.5px}
+
+  /* === Code block === */
+  pre.code{background:#0b1220;color:#e2e8f0;padding:18px 20px;border-radius:12px;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.7;overflow-x:auto;margin:0}
+  pre.code .k{color:#f472b6}
+  pre.code .t{color:#7dd3fc}
+  pre.code .s{color:#fde68a}
+  pre.code .c{color:#64748b}
+  pre.code .v{color:#86efac}
+  pre.code .f{color:#c4b5fd}
+
+  .footer{color:var(--muted);font-size:12.5px;margin:20px 0;text-align:center}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>วิธีที่ <span style="font-family:'JetBrains Mono',monospace;color:#0ea5e9;font-size:21px">parser.ts</span> ตีความข้อความ</h1>
+    <p>เปลี่ยนข้อความภาษาคนเป็นข้อมูลที่บอทใช้ต่อได้ — เช่น <b>"เบิกพริก 300"</b> → <code style="background:#f1f5f9;padding:1px 6px;border-radius:5px">{action:"out", item:"พริก", qty:300, unit:"กรัม"}</code></p>
+    <div class="nav">
+      <a href="chat.html">← ตัวอย่างแชท</a>
+      <a href="architecture.html">สถาปัตยกรรม (Supabase)</a>
+      <a href="llm.html">เพิ่ม LLM เข้ามา →</a>
+    </div>
+  </header>
+
+  <!-- ============== Hero: example tokenized ============== -->
+  <div class="panel">
+    <h2>🧩 ภาพรวม: ข้อความ → ข้อมูล</h2>
+    <div class="hero">
+      <div class="raw"><span class="t">เบิกพริก 300</span></div>
+      <div class="arrow-big">➜</div>
+<div class="parsed"><span class="k">{</span>
+  <span class="k">action</span>: <span class="s">"out"</span>,    <span style="color:#64748b">// เบิก = ออก</span>
+  <span class="k">item</span>:   <span class="s">"พริก"</span>,
+  <span class="k">qty</span>:    <span class="n">300</span>,
+  <span class="k">unit</span>:   <span class="s">"กรัม"</span>    <span style="color:#64748b">// default</span>
+<span class="k">}</span></div>
+    </div>
+
+    <div class="tokens">
+      <div class="tok a"><div class="lbl">action</div>เบิก</div>
+      <div class="tok i"><div class="lbl">item</div>พริก</div>
+      <div class="tok q"><div class="lbl">qty</div>300</div>
+      <div class="tok u"><div class="lbl">unit (auto)</div>กรัม</div>
+    </div>
+
+    <p class="muted" style="text-align:center;margin-top:10px">parser แยก 4 ส่วน: <b>การกระทำ</b> → <b>ของ</b> → <b>จำนวน</b> → <b>หน่วย</b></p>
+  </div>
+
+  <!-- ============== Challenge ============== -->
+  <div class="panel">
+    <h2>🤔 ความท้าทาย: ภาษาไทยไม่เว้นวรรคระหว่างคำ</h2>
+    <p class="muted">คนไทยพิมพ์ <b>"เบิกพริก"</b> ติดกันได้ตามปกติ — ไม่เหมือนภาษาอังกฤษที่มีช่องว่างระหว่างคำชัดเจน parser ต้องรู้ว่าจะ "ตัด" ตรงไหน</p>
+
+    <table>
+      <thead><tr><th>ที่คนพิมพ์</th><th>ความหมายที่ต้องการ</th></tr></thead>
+      <tbody>
+        <tr><td><b>เบิกพริก 300</b> (ติดกัน)</td><td>เบิก / พริก / 300</td></tr>
+        <tr><td><b>เบิก พริก 300</b> (เว้นวรรค)</td><td>เบิก / พริก / 300</td></tr>
+        <tr><td><b>เบิกไก่ไทย 3 ตัว</b></td><td>เบิก / ไก่ไทย / 3 / ตัว</td></tr>
+        <tr><td><b>มีน้ำมันพืช 1.5 ลิตร</b></td><td>มี / น้ำมันพืช / 1.5 / ลิตร</td></tr>
+        <tr><td><b>เบิกพริก300</b> (ไม่เว้นเลย)</td><td>เบิก / พริก / 300 (เผื่อใจ)</td></tr>
+      </tbody>
+    </table>
+
+    <p class="muted" style="margin-top:14px">หัวใจของวิธีนี้: <b>"action" เป็นชุดคำที่รู้ล่วงหน้า"</b> (มี/เติม/เพิ่ม/เบิก/ออก/เกิน) — เลยจับจุดเริ่มได้แน่นอน ส่วน "qty" เป็นตัวเลขท้าย ๆ — จับจุดจบได้ด้วย ที่อยู่ตรงกลาง = ชื่อของ</p>
+  </div>
+
+  <!-- ============== 3-step algorithm ============== -->
+  <div class="panel">
+    <h2>🪜 อัลกอริทึม 3 ขั้น</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="n">1</div>
+        <div>
+          <h3>หา "การกระทำ" จากต้นข้อความ</h3>
+          <p>เทียบกับชุดคำที่รู้: <b>มี / เติม / เพิ่ม / เบิก / ออก / เกิน</b> ถ้าเจอ ตัดออกจากต้น</p>
+          <p style="margin-top:6px">ตัวอย่าง: <span class="seg a">เบิก</span><span style="opacity:.5">|</span>พริก 300 → action = <span class="seg a">เบิก</span></p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <div>
+          <h3>หา "จำนวน" + "หน่วย" จากท้ายข้อความ</h3>
+          <p>หาตัวเลข (อาจมีจุดทศนิยม) ที่อยู่ใกล้ท้ายสุด ตามด้วยคำสั้น ๆ ที่อาจเป็นหน่วย</p>
+          <p style="margin-top:6px">ตัวอย่าง: พริก<span style="opacity:.5">|</span><span class="seg q">300</span> → qty = <span class="seg q">300</span>, unit = ว่าง</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <div>
+          <h3>ที่เหลือตรงกลาง = "ชื่อของ"</h3>
+          <p>หลังตัดหัว (action) และท้าย (qty + unit) ออก สิ่งที่เหลือคือชื่อของ — trim ช่องว่างแล้วใช้ได้</p>
+          <p style="margin-top:6px">ตัวอย่าง: <span class="seg i">พริก</span> → item = <span class="seg i">พริก</span></p>
+          <p style="margin-top:6px">ถ้า unit ว่าง → ดูจาก lookup table (ไก่ → "ตัว", ทั่วไป → "กรัม")</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== Regex breakdown ============== -->
+  <div class="panel">
+    <h2>🔍 Regex ที่ใช้ — แยกทีละชิ้น</h2>
+    <p class="muted">parser ใช้ regex 2 ตัว ตามอัลกอริทึมข้างบน ตัวแรกจับ action ตัวที่สองจับ qty/unit</p>
+
+    <h3>① จับ action ที่ต้นข้อความ</h3>
+<pre class="code"><span class="k">const</span> <span class="v">ACTION_RE</span> = <span class="s">/^(มี|เติม|เพิ่ม|เบิก|ออก|เกิน)\s*(.*)$/</span>;</pre>
+
+    <div style="margin-top:10px">
+      <div class="regex-row"><code>^</code><div class="desc"><b>ต้องเริ่มต้นด้วย</b> — ไม่ใช่ตรงกลาง</div></div>
+      <div class="regex-row"><code>(มี|เติม|...)</code><div class="desc">หนึ่งใน <b>คำกริยาที่กำหนด</b> เท่านั้น ถ้าไม่ตรง = ไม่ใช่ข้อความบันทึก</div></div>
+      <div class="regex-row"><code>\s*</code><div class="desc">ช่องว่างหรือไม่ก็ได้ ("เบิก พริก" และ "เบิกพริก" จะแม็ตช์ทั้งคู่)</div></div>
+      <div class="regex-row"><code>(.*)$</code><div class="desc">ที่เหลือทั้งหมด = ส่วนของ "ของ + จำนวน + หน่วย"</div></div>
+    </div>
+
+    <h3>② แยก "ของ + qty + unit" จากที่เหลือ</h3>
+<pre class="code"><span class="k">const</span> <span class="v">TAIL_RE</span> = <span class="s">/^(.+?)\s*(\d+(?:\.\d+)?)\s*([฀-๿a-zA-Z./]*)$/</span>;</pre>
+
+    <div style="margin-top:10px">
+      <div class="regex-row"><code>(.+?)</code><div class="desc">"ของ" — จับให้ <b>สั้นที่สุด</b> (non-greedy ด้วย <code>?</code>) เพื่อให้เลขที่ตามมาเก็บได้ครบ</div></div>
+      <div class="regex-row"><code>\s*</code><div class="desc">ช่องว่างระหว่าง "ของ" กับ "จำนวน" หรือไม่มีก็ได้</div></div>
+      <div class="regex-row"><code>(\d+(?:\.\d+)?)</code><div class="desc">"จำนวน" — รับเลขจำนวนเต็มหรือทศนิยม (เช่น 300 หรือ 1.5)</div></div>
+      <div class="regex-row"><code>\s*</code><div class="desc">ช่องว่างระหว่าง "จำนวน" กับ "หน่วย" หรือไม่มีก็ได้</div></div>
+      <div class="regex-row"><code>[฀-๿...]*</code><div class="desc">"หน่วย" (อาจไม่มี) — รับตัวอักษรไทย (Unicode <code>฀-๿</code>), อังกฤษ, จุด, slash เช่น "ตัว", "kg", "กก.", "ขวด/ลัง"</div></div>
+      <div class="regex-row"><code>$</code><div class="desc"><b>ต้องจบที่นี่</b> — ถ้ามีอะไรเกินมา = ข้อความผิดรูป</div></div>
+    </div>
+  </div>
+
+  <!-- ============== Playground ============== -->
+  <div class="panel">
+    <h2>🎮 ลองเล่น — พิมพ์ดูว่า parser ตีความว่าอะไร</h2>
+    <p class="muted">พิมพ์ข้อความข้างซ้าย ดูผลที่ขวา parser ทำงานแบบเดียวกับใน Edge Function จริง</p>
+
+    <div class="play">
+      <div class="pinput">
+        <label>ข้อความที่พิมพ์</label>
+        <input id="input" value="เบิกพริก 300" autocomplete="off" />
+        <div class="examples" id="examples">
+          <button data-text="เบิกพริก 300">เบิกพริก 300</button>
+          <button data-text="เบิก พริก 300">เบิก พริก 300</button>
+          <button data-text="มีไก่ไทย 9 ตัว">มีไก่ไทย 9 ตัว</button>
+          <button data-text="เติมน้ำมันพืช 1.5 ลิตร">เติมน้ำมันพืช 1.5 ลิตร</button>
+          <button data-text="เกิน น้ำตาล 2 ถุง">เกิน น้ำตาล 2 ถุง</button>
+          <button data-text="เบิกพริก300">เบิกพริก300 (ไม่เว้น)</button>
+          <button data-text="เบกพริก 300">เบกพริก 300 (พิมพ์ผิด)</button>
+          <button data-text="สวัสดี">สวัสดี (chitchat)</button>
+          <button data-text="พริก 300">พริก 300 (ไม่มี action)</button>
+        </div>
+      </div>
+      <div class="poutput" id="output"><span class="lbl">RESULT</span><span class="c">// rendered as you type…</span></div>
+    </div>
+  </div>
+
+  <!-- ============== Trace table ============== -->
+  <div class="panel">
+    <h2>📋 ตัวอย่างผลลัพธ์ (trace)</h2>
+    <table>
+      <thead><tr><th>Input</th><th>action</th><th>item</th><th>qty</th><th>unit</th><th>หมายเหตุ</th></tr></thead>
+      <tbody>
+        <tr class="good"><td>เบิกพริก 300</td><td>out</td><td>พริก</td><td>300</td><td>กรัม*</td><td>* default เมื่อไม่ระบุหน่วย</td></tr>
+        <tr class="good"><td>เบิก พริก 300</td><td>out</td><td>พริก</td><td>300</td><td>กรัม*</td><td>เว้นวรรคก็ได้</td></tr>
+        <tr class="good"><td>มีไก่ไทย 9 ตัว</td><td>in</td><td>ไก่ไทย</td><td>9</td><td>ตัว</td><td>มี หน่วย ตามที่ระบุ</td></tr>
+        <tr class="good"><td>เติม น้ำมัน 1.5 ลิตร</td><td>in</td><td>น้ำมัน</td><td>1.5</td><td>ลิตร</td><td>รับทศนิยมได้</td></tr>
+        <tr class="good"><td>เกิน น้ำตาล 2 ถุง</td><td>adj</td><td>น้ำตาล</td><td>2</td><td>ถุง</td><td>เกิน = adjustment</td></tr>
+        <tr class="good"><td>เบิกพริก300</td><td>out</td><td>พริก</td><td>300</td><td>กรัม*</td><td>เผื่อใจ — ไม่เว้นช่องก็ผ่าน</td></tr>
+        <tr class="bad"><td>เบกพริก 300</td><td>—</td><td>—</td><td>—</td><td>—</td><td>เพี้ยน — ตัว chitchat แนะนำ "เบิกพริก 300"</td></tr>
+        <tr class="bad"><td>พริก 300</td><td>—</td><td>—</td><td>—</td><td>—</td><td>ไม่มี action — fallback "พิมพ์เบิก/มี/เกิน นำหน้า"</td></tr>
+        <tr class="bad"><td>สวัสดี</td><td>—</td><td>—</td><td>—</td><td>—</td><td>chitchat — บอททักกลับ ไม่ใช่บันทึก</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============== Full code ============== -->
+  <div class="panel">
+    <h2>💻 โค้ดเต็ม — <code style="font-size:14px;background:#f1f5f9;padding:1px 6px;border-radius:5px">supabase/functions/line-webhook/parser.ts</code></h2>
+    <p class="muted">รันบน Deno (Supabase Edge Functions) — ใช้ได้กับ Node เหมือนกัน ไม่มี dependency</p>
+
+<pre class="code"><span class="c">// === Constants ===</span>
+
+<span class="k">type</span> <span class="t">Kind</span> = <span class="s">"in"</span> | <span class="s">"out"</span> | <span class="s">"adj"</span>;
+
+<span class="c">// คำกริยาที่รู้จัก → ชนิดของการกระทำ</span>
+<span class="k">const</span> <span class="v">ACTIONS</span>: <span class="t">Record</span>&lt;<span class="t">string</span>, <span class="t">Kind</span>&gt; = {
+  <span class="s">"มี"</span>:   <span class="s">"in"</span>,
+  <span class="s">"เติม"</span>:  <span class="s">"in"</span>,
+  <span class="s">"เพิ่ม"</span>: <span class="s">"in"</span>,
+  <span class="s">"เบิก"</span>:  <span class="s">"out"</span>,
+  <span class="s">"ออก"</span>:  <span class="s">"out"</span>,
+  <span class="s">"เกิน"</span>:  <span class="s">"adj"</span>,
+};
+
+<span class="c">// หน่วย default ตามชนิดของ (เผื่อ user ไม่พิมพ์หน่วย)</span>
+<span class="k">const</span> <span class="v">DEFAULT_UNITS</span>: <span class="t">Record</span>&lt;<span class="t">string</span>, <span class="t">string</span>&gt; = {
+  <span class="s">"ไก่ไทย"</span>: <span class="s">"ตัว"</span>,
+  <span class="s">"ไก่"</span>:    <span class="s">"ตัว"</span>,
+  <span class="s">"หมูสับ"</span>: <span class="s">"ถุง"</span>,
+  <span class="s">"น้ำตาล"</span>: <span class="s">"ถุง"</span>,
+  <span class="s">"เกลือ"</span>:  <span class="s">"ถุง"</span>,
+  <span class="s">"ข้าวสาร"</span>: <span class="s">"กก."</span>,
+};
+
+<span class="c">// === Regex (ดู comment อธิบายในหน้าเว็บ parser.html) ===</span>
+
+<span class="k">const</span> <span class="v">ACTION_RE</span> = <span class="s">/^(มี|เติม|เพิ่ม|เบิก|ออก|เกิน)\s*(.*)$/</span>;
+<span class="k">const</span> <span class="v">TAIL_RE</span>   = <span class="s">/^(.+?)\s*(\d+(?:\.\d+)?)\s*([฀-๿a-zA-Z./]*)$/</span>;
+
+<span class="c">// === Public API ===</span>
+
+<span class="k">export interface</span> <span class="t">ParsedRecord</span> {
+  action: <span class="t">Kind</span>;
+  actionWord: <span class="t">string</span>;   <span class="c">// เก็บคำเดิมไว้สำหรับแสดงผล</span>
+  item: <span class="t">string</span>;
+  qty: <span class="t">number</span>;
+  unit: <span class="t">string</span>;
+}
+
+<span class="k">export function</span> <span class="f">parseRecord</span>(raw: <span class="t">string</span>): <span class="t">ParsedRecord</span> | <span class="k">null</span> {
+  <span class="k">const</span> text = raw.<span class="f">trim</span>().<span class="f">replace</span>(<span class="s">/\s+/g</span>, <span class="s">" "</span>);
+  <span class="k">if</span> (!text) <span class="k">return null</span>;
+
+  <span class="c">// ① หา action จากต้นข้อความ</span>
+  <span class="k">const</span> a = text.<span class="f">match</span>(<span class="v">ACTION_RE</span>);
+  <span class="k">if</span> (!a) <span class="k">return null</span>;
+  <span class="k">const</span> actionWord = a[<span class="v">1</span>];
+  <span class="k">const</span> rest = a[<span class="v">2</span>].<span class="f">trim</span>();
+  <span class="k">if</span> (!rest) <span class="k">return null</span>;
+
+  <span class="c">// ② แยก ของ + qty + unit</span>
+  <span class="k">const</span> t = rest.<span class="f">match</span>(<span class="v">TAIL_RE</span>);
+  <span class="k">if</span> (!t) <span class="k">return null</span>;
+  <span class="k">const</span> item = t[<span class="v">1</span>].<span class="f">trim</span>();
+  <span class="k">const</span> qty  = <span class="f">parseFloat</span>(t[<span class="v">2</span>]);
+  <span class="k">const</span> unit = (t[<span class="v">3</span>] || <span class="s">""</span>).<span class="f">trim</span>() || <span class="v">DEFAULT_UNITS</span>[item] || <span class="s">"กรัม"</span>;
+
+  <span class="c">// ③ validate</span>
+  <span class="k">if</span> (item.length === <span class="v">0</span> || !<span class="f">isFinite</span>(qty) || qty &lt;= <span class="v">0</span>) <span class="k">return null</span>;
+
+  <span class="k">return</span> {
+    action: <span class="v">ACTIONS</span>[actionWord],
+    actionWord,
+    item,
+    qty,
+    unit,
+  };
+}</pre>
+  </div>
+
+  <!-- ============== When parsing fails ============== -->
+  <div class="panel">
+    <h2>❌ เมื่อ parse ไม่ผ่าน — เกิดอะไรขึ้น</h2>
+    <p class="muted">parser คืน <code>null</code> เมื่อข้อความไม่ใช่รูปแบบบันทึก — Edge Function จะส่งต่อให้ขั้นถัดไป:</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="n">A</div>
+        <div>
+          <h3>เป็นทักทาย / ขอบคุณ / สวัสดี</h3>
+          <p>ส่งให้ <code>chitchat.ts</code> ตอบสุภาพ — "สวัสดีค่ะ 👋"</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">B</div>
+        <div>
+          <h3>ใกล้เคียง action แต่สะกดเพี้ยน</h3>
+          <p>คำนวณ <b>Levenshtein distance</b> เทียบกับชุด action ถ้าห่าง 1 ตัว → แนะนำ "ใช่ <b>เบิกพริก 300</b> หรือเปล่าคะ?"</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">C</div>
+        <div>
+          <h3>เป็นคำสั่ง (ผิด / ดูสต็อค / วิธีใช้)</h3>
+          <p>match กับ command keyword set — เข้าสู่ flow ตามคำสั่ง</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">D</div>
+        <div>
+          <h3>ไม่ใช่อะไรเลย</h3>
+          <p>ตอบสุภาพ: "ขอโทษค่ะ ไม่เข้าใจ — ลองพิมพ์เช่น เบิกพริก 300 หรือกดปุ่มข้างล่าง"</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== Why this simple parser is enough ============== -->
+  <div class="panel">
+    <h2>🤓 ทำไมถึงไม่ใช้ NLP/LLM</h2>
+    <p class="muted">โดเมนของเราจำกัด — action มีแค่ 6 คำ จำนวน = ตัวเลข หน่วย = คำสั้น ๆ ทำให้ regex 2 ตัวเพียงพอ:</p>
+    <ul style="color:var(--muted);font-size:14px;line-height:1.7">
+      <li><b>เร็ว</b> — parse 1 ข้อความ &lt; 1 มิลลิวินาที (Edge Function รวดเร็ว)</li>
+      <li><b>ฟรี</b> — ไม่ต้องเรียก API ภายนอก ไม่ต้องจ่าย token</li>
+      <li><b>คาดเดาได้</b> — ผลลัพธ์เหมือนเดิมเสมอ ไม่ "หลุด" อย่าง LLM</li>
+      <li><b>Debug ง่าย</b> — input อะไร output อะไร เห็นชัด ทดสอบเขียน unit test ได้ตรง</li>
+      <li><b>ขยายต่อได้</b> — เพิ่มคำใหม่ใน <code>ACTIONS</code> หรือ <code>DEFAULT_UNITS</code> ก็พอ</li>
+    </ul>
+    <p class="muted" style="margin-top:14px">ถ้าในอนาคตอยากให้รับ "พริกสามขีด" (ตัวเลขเป็นคำ) หรือ "ขอเบิกพริกหน่อย 300 กรัม" (ภาษาธรรมชาติ) — ค่อยใส่ LLM เป็น <b>fallback</b> เมื่อ regex fail ก็ได้</p>
+  </div>
+
+  <div class="footer">parser.ts เป็นชิ้นเล็ก ๆ แต่สำคัญที่สุด — ทุกข้อความเข้ากลุ่ม ต้องผ่านมันก่อนเสมอ</div>
+</div>
+
+<script>
+/* === The actual parser, mirrored from parser.ts === */
+const ACTIONS = {
+  "มี":"in","เติม":"in","เพิ่ม":"in","เบิก":"out","ออก":"out","เกิน":"adj"
+};
+const DEFAULT_UNITS = {
+  "ไก่ไทย":"ตัว","ไก่":"ตัว","หมูสับ":"ถุง","น้ำตาล":"ถุง","เกลือ":"ถุง","ข้าวสาร":"กก."
+};
+const ACTION_RE = /^(มี|เติม|เพิ่ม|เบิก|ออก|เกิน)\s*(.*)$/;
+const TAIL_RE   = /^(.+?)\s*(\d+(?:\.\d+)?)\s*([฀-๿a-zA-Z./]*)$/;
+
+function parseRecord(raw){
+  const trace = [];
+  const text = raw.trim().replace(/\s+/g," ");
+  trace.push(`normalize: "${text}"`);
+  if (!text){ trace.push("✗ empty"); return {ok:false, trace}; }
+
+  const a = text.match(ACTION_RE);
+  if (!a){ trace.push("✗ ไม่ตรง action regex"); return {ok:false, trace}; }
+  trace.push(`① action match: "${a[1]}" + rest="${a[2]}"`);
+  const actionWord = a[1];
+  const rest = a[2].trim();
+  if (!rest){ trace.push("✗ ไม่มีของ/จำนวน"); return {ok:false, trace}; }
+
+  const t = rest.match(TAIL_RE);
+  if (!t){ trace.push("✗ ไม่ตรง tail regex"); return {ok:false, trace}; }
+  trace.push(`② tail match: item="${t[1].trim()}" qty="${t[2]}" unit="${t[3]||"(ว่าง)"}"`);
+  const item = t[1].trim();
+  const qty  = parseFloat(t[2]);
+  let unit = (t[3]||"").trim();
+  if (!unit){
+    unit = DEFAULT_UNITS[item] || "กรัม";
+    trace.push(`③ unit ว่าง → default = "${unit}"`);
+  }
+  if (!item || !isFinite(qty) || qty <= 0){
+    trace.push("✗ ของหรือจำนวนไม่ถูกต้อง");
+    return {ok:false, trace};
+  }
+  return {
+    ok:true, trace,
+    result:{ action: ACTIONS[actionWord], actionWord, item, qty, unit }
+  };
+}
+
+const input = document.getElementById("input");
+const output = document.getElementById("output");
+
+function render(){
+  const r = parseRecord(input.value);
+  if (r.ok){
+    output.className = "poutput ok";
+    const v = r.result;
+    output.innerHTML =
+      `<span class="lbl">PARSED OK</span>`+
+      `<span class="c">// trace</span>\n` +
+      r.trace.map(s=>`<span class="c">// </span>${esc(s)}`).join("\n") +
+      `\n\n<span class="k">{</span>\n` +
+      `  <span class="k">action</span>:     <span class="s">"${v.action}"</span>,\n` +
+      `  <span class="k">actionWord</span>: <span class="s">"${v.actionWord}"</span>,\n` +
+      `  <span class="k">item</span>:       <span class="s">"${esc(v.item)}"</span>,\n` +
+      `  <span class="k">qty</span>:        <span class="n">${v.qty}</span>,\n` +
+      `  <span class="k">unit</span>:       <span class="s">"${esc(v.unit)}"</span>\n` +
+      `<span class="k">}</span>`;
+  } else {
+    output.className = "poutput error";
+    output.innerHTML =
+      `<span class="lbl">PARSE FAILED</span>`+
+      `<span class="c">// trace</span>\n` +
+      r.trace.map(s=>`<span class="c">// </span>${esc(s)}`).join("\n") +
+      `\n\n<span class="err">parseRecord(…) → null</span>\n\n` +
+      `<span class="c">// → router จะส่งให้ chitchat / typo / command / fallback ต่อไป</span>`;
+  }
+}
+function esc(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"})[c]); }
+
+input.addEventListener("input", render);
+document.getElementById("examples").addEventListener("click", e=>{
+  const b = e.target.closest("button"); if (!b) return;
+  input.value = b.dataset.text;
+  render();
+  input.focus();
+});
+
+render();
+</script>
+</body>
+</html>
