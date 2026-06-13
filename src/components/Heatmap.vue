@@ -5,8 +5,15 @@ import type { Item, Entry, ItemActivity } from '../types'
 import { useTheme } from '../composables/useTheme'
 import { fmtQty, fmtMoney } from '../format'
 
-type TileData = Item & { value: number; activity: ItemActivity }
+type TileData = Item & { value: number; activity: ItemActivity; _aggregated?: number }
 type Tile = Rect<TileData>
+
+// Mobile detection (reactive via media query)
+const mq = window.matchMedia('(max-width: 640px)')
+const isMobile = ref(mq.matches)
+mq.addEventListener?.('change', (e) => {
+  isMobile.value = e.matches
+})
 
 const props = defineProps<{ items: Item[]; entries: Entry[]; pulseName: string | null }>()
 const emit = defineEmits<{ (e: 'pick', name: string): void }>()
@@ -36,10 +43,49 @@ function itemActivity(name: string): ItemActivity {
 
 function compute() {
   if (!wrap.value) return
-  const data: TileData[] = props.items
+  const all: TileData[] = props.items
     .map((i) => ({ ...i, activity: itemActivity(i.name), value: Math.max(Number(i.total_cost || 0), 1) }))
     .filter((d) => Number(d.current_qty || 0) > 0 || d.activity.count > 0)
     .sort((a, b) => b.value - a.value)
+
+  // On mobile, show only top 15 visually and merge the rest into one "อื่นๆ" tile.
+  // The treemap stays readable; the full list lives in the stock table.
+  const TOP_N = isMobile.value ? 15 : Infinity
+  let data: TileData[]
+  if (all.length > TOP_N) {
+    const top = all.slice(0, TOP_N)
+    const rest = all.slice(TOP_N)
+    const restValue = rest.reduce((s, r) => s + r.value, 0)
+    const restQty = rest.reduce((s, r) => s + Number(r.current_qty || 0), 0)
+    const restActivity: ItemActivity = rest.reduce(
+      (a, r) => ({
+        inQty: a.inQty + r.activity.inQty,
+        outQty: a.outQty + r.activity.outQty,
+        count: a.count + r.activity.count,
+        net: a.net + r.activity.net,
+      }),
+      { inQty: 0, outQty: 0, count: 0, net: 0 },
+    )
+    data = [
+      ...top,
+      {
+        name: `อื่นๆ (${rest.length})`,
+        current_qty: restQty,
+        default_unit: '',
+        total_cost: restValue,
+        unit_cost: null,
+        low_threshold: null,
+        is_low: false,
+        last_updated: new Date().toISOString(),
+        value: restValue,
+        activity: restActivity,
+        _aggregated: rest.length,
+      } as TileData,
+    ]
+  } else {
+    data = all
+  }
+
   const W = wrap.value.clientWidth
   const H = wrap.value.clientHeight
   tiles.value = squarify(data, 0, 0, W, H)
@@ -88,10 +134,16 @@ function tileStyle(t: Tile) {
 
 function tileClass(t: Tile) {
   return {
-    small: t.w < 110 || t.h < 56,
-    tiny: t.w < 60 || t.h < 36,
+    small: t.w < 130 || t.h < 64,
+    tiny: t.w < 80 || t.h < 48,
     flash: flashSet.value.has(t.name),
+    aggregated: !!t._aggregated,
   }
+}
+
+function onTileClick(t: Tile) {
+  if (t._aggregated) return  // "อื่นๆ" tile — no drill-down
+  emit('pick', t.name)
 }
 
 function showTip(e: MouseEvent, t: Tile) {
@@ -118,7 +170,7 @@ const tipStyle = computed(() => {
   return { left: x + 'px', top: y + 'px' }
 })
 
-watch(() => [props.items, props.entries, theme.value], () => {
+watch(() => [props.items, props.entries, theme.value, isMobile.value], () => {
   nextTick(compute)
 }, { deep: true })
 
@@ -163,7 +215,7 @@ onUnmounted(() => {
           @mouseenter="(e) => showTip(e, t)"
           @mousemove="moveTip"
           @mouseleave="hideTip"
-          @click="emit('pick', t.name)"
+          @click="onTileClick(t)"
         >
           <div class="tn">{{ t.name }}</div>
           <div class="tq">{{ fmtQty(t.current_qty) }} {{ t.default_unit || '' }}</div>
@@ -329,7 +381,31 @@ onUnmounted(() => {
 
 @media (max-width: 640px) {
   .heatmap-wrap {
-    aspect-ratio: 5 / 6;
+    aspect-ratio: 4 / 5;
+    min-height: 380px;
+  }
+  .heatmap-tile {
+    padding: 10px 12px;
+  }
+  .heatmap-tile .tn {
+    font-size: 13.5px;
+  }
+  .heatmap-tile .tq {
+    font-size: 11px;
+  }
+  .heatmap-tile.small {
+    padding: 6px 8px;
+  }
+  .heatmap-tile.small .tn {
+    font-size: 12px;
+  }
+  .heatmap-tile.aggregated {
+    border-style: dashed;
+    cursor: default;
+  }
+  .heatmap-tile.aggregated .tn::after {
+    content: ' →';
+    opacity: 0.5;
   }
   .legend {
     font-size: 10.5px;
